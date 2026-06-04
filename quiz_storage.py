@@ -1,3 +1,6 @@
+"""Persistência local (evita conflito com o pacote PyPI 'storage')."""
+from __future__ import annotations
+
 import hashlib
 import json
 import uuid
@@ -191,9 +194,6 @@ def migrate_legacy_leaderboard():
         legacy.rename(LEADERBOARD_PATH)
 
 
-# ---------------------------
-# Alunos cadastrados
-# ---------------------------
 def load_students() -> list:
     _ensure_data_dir()
     data = _load_json(STUDENTS_PATH, [])
@@ -258,7 +258,6 @@ def delete_student(student_id: str) -> None:
 
 
 def student_quiz_stats(student_name: str) -> dict:
-    """Resumo de tentativas do aluno em todos os materiais."""
     key = _normalize_name(student_name)
     entries = [
         e for e in load_leaderboard() if _normalize_name(e.get("name", "")) == key

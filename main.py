@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 
 import matplotlib.pyplot as plt
@@ -5,8 +7,8 @@ import pandas as pd
 import pdfplumber
 import streamlit as st
 
-import storage
-from storage import (
+import quiz_storage
+from quiz_storage import (
     add_student,
     create_material,
     delete_material,
@@ -603,7 +605,7 @@ def render_professor_panel():
 
     with tab_config:
         st.subheader("Alterar login do professor")
-        cfg = storage.load_config()
+        cfg = quiz_storage.load_config()
         new_user = st.text_input("Novo usuário", value=cfg["professor_username"])
         new_pass = st.text_input("Nova senha", type="password")
         new_pass2 = st.text_input("Confirmar nova senha", type="password")
