@@ -194,7 +194,7 @@ def find_student_by_name(name: str) -> dict | None:
     return None
 
 
-def add_student(name: str, identifier: str = "") -> tuple[dict | None, str | None]:
+def add_student(name: str) -> tuple[dict | None, str | None]:
     name = " ".join(name.strip().split())
     if not name:
         return None, "Informe o nome do aluno."
@@ -203,7 +203,6 @@ def add_student(name: str, identifier: str = "") -> tuple[dict | None, str | Non
     student = {
         "id": str(uuid.uuid4()),
         "name": name,
-        "identifier": identifier.strip(),
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     students = load_students()
@@ -212,7 +211,7 @@ def add_student(name: str, identifier: str = "") -> tuple[dict | None, str | Non
     return student, None
 
 
-def update_student(student_id: str, name: str, identifier: str = "") -> str | None:
+def update_student(student_id: str, name: str) -> str | None:
     name = " ".join(name.strip().split())
     if not name:
         return "Informe o nome do aluno."
@@ -224,7 +223,7 @@ def update_student(student_id: str, name: str, identifier: str = "") -> str | No
     for s in students:
         if s["id"] == student_id:
             s["name"] = name
-            s["identifier"] = identifier.strip()
+            s.pop("identifier", None)
             s["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_students(students)
             return None

@@ -275,10 +275,9 @@ def render_student_register_form(form_key: str, button_label: str = "Cadastrar-m
     """Formulário de auto-cadastro. Retorna True se cadastrou com sucesso."""
     with st.form(form_key):
         name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
-        identifier = st.text_input("Matrícula / ID (opcional)", placeholder="Ex.: 20240042")
         submitted = st.form_submit_button(button_label, use_container_width=True)
         if submitted:
-            _, err = add_student(name, identifier)
+            _, err = add_student(name)
             if err:
                 st.error(err)
             else:
@@ -376,13 +375,9 @@ def render_students_tab():
     )
 
     with st.form("add_student_form", clear_on_submit=True):
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            new_name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
-        with c2:
-            new_id = st.text_input("Matrícula / ID (opcional)", placeholder="Ex.: 20240042")
+        new_name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
         if st.form_submit_button("➕ Cadastrar aluno", type="primary"):
-            _, err = add_student(new_name, new_id)
+            _, err = add_student(new_name)
             if err:
                 st.error(err)
             else:
@@ -401,7 +396,6 @@ def render_students_tab():
         rows.append(
             {
                 "Nome": s["name"],
-                "Matrícula": s.get("identifier") or "—",
                 "Tentativas": stats["attempts"],
                 "Média %": f"{stats['avg_pct']:.1f}" if stats["avg_pct"] is not None else "—",
                 "Último resultado": stats["last_score"] or "—",
@@ -418,15 +412,10 @@ def render_students_tab():
                 value=s["name"],
                 key=f"student_name_{s['id']}",
             )
-            edit_id = st.text_input(
-                "Matrícula / ID",
-                value=s.get("identifier", ""),
-                key=f"student_ident_{s['id']}",
-            )
             ec1, ec2 = st.columns(2)
             with ec1:
                 if st.button("💾 Salvar", key=f"save_student_{s['id']}"):
-                    err = update_student(s["id"], edit_name, edit_id)
+                    err = update_student(s["id"], edit_name)
                     if err:
                         st.error(err)
                     else:
