@@ -147,6 +147,7 @@ def init_session_state():
         "show_comparison": False,
         "answer_feedback": None,
         "professor_edit_id": None,
+        "preferred_student_name": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -270,6 +271,23 @@ def plot_question_performance(leaderboard, total_questions):
 # ---------------------------
 # Login
 # ---------------------------
+def render_student_register_form(form_key: str, button_label: str = "Cadastrar-me") -> bool:
+    """Formulário de auto-cadastro. Retorna True se cadastrou com sucesso."""
+    with st.form(form_key):
+        name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
+        identifier = st.text_input("Matrícula / ID (opcional)", placeholder="Ex.: 20240042")
+        submitted = st.form_submit_button(button_label, use_container_width=True)
+        if submitted:
+            _, err = add_student(name, identifier)
+            if err:
+                st.error(err)
+            else:
+                st.session_state.preferred_student_name = " ".join(name.strip().split())
+                st.success(f"Cadastro realizado! Bem-vindo(a), **{st.session_state.preferred_student_name}**.")
+                return True
+    return False
+
+
 def render_login():
     st.title("🎮 Quiz Interativo")
     st.markdown("Escolha como deseja entrar na plataforma.")
@@ -278,11 +296,21 @@ def render_login():
 
     with col_aluno:
         st.subheader("👨‍🎓 Área do Aluno")
-        st.markdown("Responda ao quiz ativo definido pelo professor.")
-        if st.button("Entrar como aluno", type="primary", use_container_width=True):
-            st.session_state.role = "student"
-            sync_student_material()
-            st.rerun()
+        tab_entrar, tab_cadastro = st.tabs(["Entrar", "Cadastrar-me"])
+
+        with tab_entrar:
+            st.markdown("Responda ao quiz ativo definido pelo professor.")
+            if st.button("Entrar como aluno", type="primary", use_container_width=True):
+                st.session_state.role = "student"
+                sync_student_material()
+                st.rerun()
+
+        with tab_cadastro:
+            st.markdown("Primeiro acesso? Crie seu cadastro para fazer o quiz.")
+            if render_student_register_form("register_on_login"):
+                st.session_state.role = "student"
+                sync_student_material()
+                st.rerun()
 
     with col_prof:
         st.subheader("👨‍🏫 Área do Professor")
@@ -344,7 +372,7 @@ def render_question_editor(questions: list, key_prefix: str) -> list:
 def render_students_tab():
     st.subheader("Alunos cadastrados")
     st.caption(
-        "Somente alunos desta lista podem iniciar o quiz na área do aluno."
+        "Alunos podem se cadastrar na área do aluno ou você pode adicioná-los aqui."
     )
 
     with st.form("add_student_form", clear_on_submit=True):
@@ -606,13 +634,16 @@ def render_student_panel():
         if material:
             st.write(f"**Atividade:** {material['title']}")
             st.write(f"**Perguntas:** {len(material['questions'])}")
-            if not registered:
-                st.warning("Nenhum aluno cadastrado. Peça ao professor para cadastrá-lo.")
-            else:
+            if registered:
                 names = sorted(s["name"] for s in registered)
+                preferred = st.session_state.preferred_student_name
+                default_index = 0
+                if preferred and preferred in names:
+                    default_index = names.index(preferred) + 1
                 selected_name = st.selectbox(
                     "Selecione seu nome",
                     options=[""] + names,
+                    index=default_index,
                     format_func=lambda x: "— Escolha —" if x == "" else x,
                     key="student_name_select",
                 )
@@ -631,10 +662,18 @@ def render_student_panel():
                                 "Um novo será adicionado ao refazer."
                             )
                         st.session_state.current_student_name = selected_name
+                        st.session_state.preferred_student_name = selected_name
                         reset_quiz()
                         st.rerun()
+            else:
+                st.info("Cadastre-se abaixo para começar.")
         else:
             st.warning("Nenhum quiz ativo. Aguarde o professor publicar um material.")
+
+        st.markdown("---")
+        with st.expander("📝 Cadastrar-me", expanded=not registered):
+            if render_student_register_form("register_in_sidebar"):
+                st.rerun()
 
     if not material or not material["questions"]:
         st.info(
@@ -644,15 +683,21 @@ def render_student_panel():
         return
 
     if not load_students():
-        st.info(
-            "Seu nome ainda não está no cadastro. "
-            "Peça ao professor para adicioná-lo em **Alunos cadastrados**."
+        st.subheader("Cadastro de aluno")
+        st.markdown(
+            "Faça seu cadastro para participar do quiz. "
+            "Use o formulário na barra lateral ou abaixo."
         )
+        if render_student_register_form("register_main"):
+            st.rerun()
         return
 
     if not st.session_state.quiz_active and not st.session_state.quiz_finished:
         st.markdown(f"### {material['title']}")
-        st.markdown("Informe seu nome na barra lateral e clique em **Iniciar quiz**.")
+        st.markdown(
+            "Selecione seu nome na barra lateral (ou cadastre-se em **Cadastrar-me**) "
+            "e clique em **Iniciar quiz**."
+        )
         return
 
     if st.session_state.quiz_active and not st.session_state.quiz_finished:
