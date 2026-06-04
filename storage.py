@@ -73,11 +73,20 @@ def update_professor_credentials(username: str, new_password: str) -> None:
     save_config(config)
 
 
+def _migrate_active_ids(store: dict) -> None:
+    if "active_material_ids" not in store:
+        old = store.pop("active_material_id", None)
+        store["active_material_ids"] = [old] if old else []
+    if store.get("active_material_ids") is None:
+        store["active_material_ids"] = []
+
+
 def load_materials_store() -> dict:
     _ensure_data_dir()
-    store = _load_json(MATERIALS_PATH, {"materials": [], "active_material_id": None})
+    store = _load_json(MATERIALS_PATH, {"materials": [], "active_material_ids": []})
     if "materials" not in store:
         store["materials"] = []
+    _migrate_active_ids(store)
     return store
 
 
@@ -96,18 +105,32 @@ def get_material(material_id: str) -> dict | None:
     return None
 
 
-def get_active_material() -> dict | None:
+def get_active_material_ids() -> list:
     store = load_materials_store()
-    active_id = store.get("active_material_id")
-    if not active_id:
-        return None
-    return get_material(active_id)
+    return list(store.get("active_material_ids") or [])
 
 
-def set_active_material(material_id: str) -> None:
+def is_material_active(material_id: str) -> bool:
+    return material_id in get_active_material_ids()
+
+
+def get_active_materials() -> list:
+    active_ids = set(get_active_material_ids())
+    return [m for m in list_materials() if m["id"] in active_ids]
+
+
+def toggle_material_active(material_id: str) -> bool:
+    """Alterna ativação do material. Retorna True se ficou ativo."""
     store = load_materials_store()
-    store["active_material_id"] = material_id
+    ids = store.setdefault("active_material_ids", [])
+    if material_id in ids:
+        ids.remove(material_id)
+        active = False
+    else:
+        ids.append(material_id)
+        active = True
     save_materials_store(store)
+    return active
 
 
 def create_material(title: str, questions: list) -> dict:
@@ -120,7 +143,7 @@ def create_material(title: str, questions: list) -> dict:
     store = load_materials_store()
     store["materials"].append(material)
     if len(store["materials"]) == 1:
-        store["active_material_id"] = material["id"]
+        store.setdefault("active_material_ids", []).append(material["id"])
     save_materials_store(store)
     return material
 
@@ -140,10 +163,9 @@ def update_material(material_id: str, title: str, questions: list) -> bool:
 def delete_material(material_id: str) -> None:
     store = load_materials_store()
     store["materials"] = [m for m in store["materials"] if m["id"] != material_id]
-    if store.get("active_material_id") == material_id:
-        store["active_material_id"] = (
-            store["materials"][0]["id"] if store["materials"] else None
-        )
+    active_ids = store.setdefault("active_material_ids", [])
+    if material_id in active_ids:
+        active_ids.remove(material_id)
     save_materials_store(store)
 
 

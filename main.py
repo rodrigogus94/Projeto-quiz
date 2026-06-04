@@ -11,8 +11,10 @@ from storage import (
     create_material,
     delete_material,
     delete_student,
-    get_active_material,
+    get_active_material_ids,
+    get_active_materials,
     get_material,
+    is_material_active,
     is_registered_student,
     leaderboard_for_material,
     list_materials,
@@ -20,8 +22,8 @@ from storage import (
     load_students,
     migrate_legacy_leaderboard,
     save_leaderboard,
-    set_active_material,
     student_quiz_stats,
+    toggle_material_active,
     update_material,
     update_professor_credentials,
     update_student,
@@ -148,6 +150,7 @@ def init_session_state():
         "answer_feedback": None,
         "professor_edit_id": None,
         "preferred_student_name": None,
+        "selected_material_id": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -160,14 +163,17 @@ def logout():
     st.rerun()
 
 
-def sync_student_material():
-    material = get_active_material()
+def load_student_material(material_id: str) -> dict | None:
+    material = get_material(material_id)
     if material:
         st.session_state.questions = material["questions"]
         st.session_state.current_material_id = material["id"]
-    else:
-        st.session_state.questions = []
-        st.session_state.current_material_id = None
+        st.session_state.selected_material_id = material["id"]
+    return material
+
+
+def get_playable_active_materials() -> list:
+    return [m for m in get_active_materials() if m.get("questions")]
 
 
 def reset_quiz():
@@ -301,14 +307,12 @@ def render_login():
             st.markdown("Responda ao quiz ativo definido pelo professor.")
             if st.button("Entrar como aluno", type="primary", use_container_width=True):
                 st.session_state.role = "student"
-                sync_student_material()
                 st.rerun()
 
         with tab_cadastro:
             st.markdown("Primeiro acesso? Crie seu cadastro para fazer o quiz.")
             if render_student_register_form("register_on_login"):
                 st.session_state.role = "student"
-                sync_student_material()
                 st.rerun()
 
     with col_prof:
@@ -443,10 +447,10 @@ def render_professor_panel():
     )
 
     materials = list_materials()
-    store = storage.load_materials_store()
-    active_id = store.get("active_material_id")
+    active_ids = set(get_active_material_ids())
 
     with tab_mat:
+        st.caption("Vários materiais podem ficar ativos ao mesmo tempo para os alunos.")
         st.subheader("Gerenciar materiais")
         new_title = st.text_input("Título do novo material", placeholder="Ex.: Lógica - Aula 3")
         uploaded = st.file_uploader("Importar perguntas de PDF", type="pdf", key="prof_pdf")
@@ -472,14 +476,15 @@ def render_professor_panel():
         else:
             st.markdown("---")
             for m in materials:
-                is_active = m["id"] == active_id
+                is_active = m["id"] in active_ids
                 label = f"{'🟢 ' if is_active else ''}{m['title']} ({len(m['questions'])} perguntas)"
                 c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
                 with c1:
                     st.write(label)
                 with c2:
-                    if not is_active and st.button("Ativar", key=f"act_{m['id']}"):
-                        set_active_material(m["id"])
+                    btn_label = "Desativar" if is_active else "Ativar"
+                    if st.button(btn_label, key=f"toggle_{m['id']}"):
+                        toggle_material_active(m["id"])
                         st.rerun()
                 with c3:
                     if st.button("Editar", key=f"edit_{m['id']}"):
@@ -497,7 +502,9 @@ def render_professor_panel():
             st.info("Crie um material na aba Materiais primeiro.")
         else:
             options = {m["title"]: m["id"] for m in materials}
-            default_id = st.session_state.professor_edit_id or active_id
+            default_id = st.session_state.professor_edit_id or (
+                next(iter(active_ids), None) if active_ids else None
+            )
             default_title = next(
                 (t for t, mid in options.items() if mid == default_id),
                 list(options.keys())[0],
@@ -548,9 +555,14 @@ def render_professor_panel():
                         st.success("Material salvo.")
                         st.rerun()
             with c2:
-                if st.button("🟢 Definir como quiz ativo para alunos"):
-                    set_active_material(material_id)
-                    st.success("Quiz ativado para os alunos.")
+                active_now = is_material_active(material_id)
+                toggle_label = "🔴 Desativar para alunos" if active_now else "🟢 Ativar para alunos"
+                if st.button(toggle_label):
+                    now_active = toggle_material_active(material_id)
+                    if now_active:
+                        st.success("Material ativado para os alunos.")
+                    else:
+                        st.success("Material desativado.")
                     st.rerun()
 
     with tab_students:
@@ -611,8 +623,17 @@ def render_professor_panel():
 # Aluno
 # ---------------------------
 def render_student_panel():
-    sync_student_material()
-    material = get_active_material()
+    playable = get_playable_active_materials()
+    active_all = get_active_materials()
+    selected_id = st.session_state.selected_material_id
+    if playable and selected_id not in [m["id"] for m in playable]:
+        selected_id = playable[0]["id"]
+        st.session_state.selected_material_id = selected_id
+    elif playable and not selected_id:
+        st.session_state.selected_material_id = playable[0]["id"]
+        selected_id = playable[0]["id"]
+
+    material = get_material(selected_id) if selected_id else None
 
     st.title("👨‍🎓 Área do Aluno")
     render_sidebar_logout()
@@ -620,9 +641,35 @@ def render_student_panel():
     with st.sidebar:
         st.header("Quiz")
         registered = load_students()
-        if material:
-            st.write(f"**Atividade:** {material['title']}")
-            st.write(f"**Perguntas:** {len(material['questions'])}")
+
+        if not active_all:
+            st.warning("Nenhum quiz ativo. Aguarde o professor publicar um material.")
+        elif not playable:
+            st.warning("Há materiais ativos, mas nenhum com perguntas ainda.")
+        else:
+            mat_options = {m["title"]: m["id"] for m in playable}
+            titles = list(mat_options.keys())
+            default_title = next(
+                (t for t, mid in mat_options.items() if mid == selected_id),
+                titles[0],
+            )
+            picked_title = st.selectbox(
+                "Escolha o quiz",
+                options=titles,
+                index=titles.index(default_title),
+                key="student_material_select",
+            )
+            picked_id = mat_options[picked_title]
+            if picked_id != st.session_state.selected_material_id:
+                load_student_material(picked_id)
+                st.session_state.quiz_active = False
+                st.session_state.quiz_finished = False
+                st.rerun()
+
+            mat = get_material(picked_id)
+            if mat:
+                st.write(f"**Perguntas:** {len(mat['questions'])}")
+
             if registered:
                 names = sorted(s["name"] for s in registered)
                 preferred = st.session_state.preferred_student_name
@@ -639,11 +686,12 @@ def render_student_panel():
                 if (
                     st.button("🆕 Iniciar quiz", use_container_width=True)
                     and selected_name
-                    and material["questions"]
+                    and mat
                 ):
                     if not is_registered_student(selected_name):
                         st.error("Nome não encontrado no cadastro.")
                     else:
+                        load_student_material(picked_id)
                         mid = st.session_state.current_material_id
                         if name_exists_in_leaderboard(selected_name, mid):
                             st.warning(
@@ -656,19 +704,21 @@ def render_student_panel():
                         st.rerun()
             else:
                 st.info("Cadastre-se abaixo para começar.")
-        else:
-            st.warning("Nenhum quiz ativo. Aguarde o professor publicar um material.")
 
         st.markdown("---")
         with st.expander("📝 Cadastrar-me", expanded=not registered):
             if render_student_register_form("register_in_sidebar"):
                 st.rerun()
 
-    if not material or not material["questions"]:
+    if not playable:
         st.info(
-            "O professor ainda não definiu um quiz ativo com perguntas. "
-            "Volte mais tarde ou peça para ativar um material."
+            "O professor ainda não disponibilizou quizzes ativos com perguntas. "
+            "Volte mais tarde."
         )
+        if active_all:
+            st.markdown("**Materiais ativos (sem perguntas ainda):**")
+            for m in active_all:
+                st.write(f"- {m['title']}")
         return
 
     if not load_students():
@@ -682,10 +732,15 @@ def render_student_panel():
         return
 
     if not st.session_state.quiz_active and not st.session_state.quiz_finished:
-        st.markdown(f"### {material['title']}")
+        if len(playable) > 1:
+            st.markdown("### Quizzes disponíveis")
+            for m in playable:
+                st.write(f"- **{m['title']}** — {len(m['questions'])} perguntas")
+            st.markdown("---")
+        if material:
+            st.markdown(f"### {material['title']}")
         st.markdown(
-            "Selecione seu nome na barra lateral (ou cadastre-se em **Cadastrar-me**) "
-            "e clique em **Iniciar quiz**."
+            "Escolha o quiz e seu nome na barra lateral, depois clique em **Iniciar quiz**."
         )
         return
 
