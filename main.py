@@ -297,12 +297,6 @@ def render_login():
                 else:
                     st.error("Usuário ou senha incorretos.")
 
-    with st.expander("Credenciais padrão (altere após o primeiro acesso)"):
-        st.code(
-            f"Usuário: {storage.DEFAULT_USERNAME}\nSenha: {storage.DEFAULT_PASSWORD}",
-            language=None,
-        )
-
 
 def render_sidebar_logout():
     role_label = "Professor" if st.session_state.role == "professor" else "Aluno"
