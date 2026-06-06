@@ -1,0 +1,185 @@
+"""Parser de PDF para quiz (múltipla escolha) e provas (com gabarito e justificativas)."""
+from __future__ import annotations
+
+import re
+
+PERGUNTA_HEADER = re.compile(r"Pergunta\s+(\d+):\s*", re.IGNORECASE)
+ALT_START = re.compile(r"Alternativa\s+[A-D]\s*[\(:]", re.IGNORECASE)
+ALT_PATTERN = re.compile(
+    r"Alternativa\s+([A-D])\s*(?:\([^)]*\))?\s*:?\s*(.*?)(?=Alternativa\s+[A-D]|Gabarito\s*:|Resposta\s+esperada\s*:|Pergunta\s+\d+:|$)",
+    re.DOTALL | re.IGNORECASE,
+)
+JUSTIFY_MARKER = re.compile(
+    r"\(JUSTIFICATIVA\)|\(DISSERTATIVA\)|\(DISCURSIVA\)|"
+    r"Tipo\s*:\s*(Justificativa|Dissertativa|Discursiva)",
+    re.IGNORECASE,
+)
+GABARITO_LINE = re.compile(
+    r"(?:Gabarito|Resposta\s+esperada)\s*:\s*(.*)",
+    re.IGNORECASE | re.DOTALL,
+)
+CORRECTA_MARK = re.compile(r"\(CORRETA\)", re.IGNORECASE)
+
+
+def _warn(warnings: list | None, msg: str):
+    if warnings is not None:
+        warnings.append(msg)
+
+
+def _clean_text(text: str) -> str:
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _strip_display_markers(text: str) -> str:
+    text = JUSTIFY_MARKER.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _extract_gabarito(block: str) -> str:
+    match = GABARITO_LINE.search(block)
+    if not match:
+        return ""
+    gabarito = match.group(1).strip()
+    gabarito = re.split(r"Pergunta\s+\d+:", gabarito, maxsplit=1, flags=re.IGNORECASE)[0]
+    return _clean_text(gabarito)
+
+
+def _parse_choice_block(block: str, header_end: int) -> dict | None:
+    first_alt = ALT_START.search(block, header_end)
+    if not first_alt:
+        return None
+
+    question_text = _strip_display_markers(block[header_end : first_alt.start()])
+    opts_in_block = ALT_PATTERN.findall(block)
+    options = []
+    correct_letter = None
+
+    for letter, opt_text in opts_in_block[:4]:
+        is_correct = bool(CORRECTA_MARK.search(opt_text))
+        opt_text = CORRECTA_MARK.sub("", opt_text).strip()
+        opt_text = _clean_text(opt_text)
+        options.append(opt_text)
+        if is_correct:
+            correct_letter = letter
+
+    if correct_letter and len(options) == 4 and question_text:
+        return {
+            "type": "choice",
+            "question": question_text,
+            "options": options,
+            "correct": correct_letter,
+        }
+    return None
+
+
+def _parse_justify_block(block: str, header_end: int) -> dict | None:
+    first_alt = ALT_START.search(block, header_end)
+    gabarito = _extract_gabarito(block)
+
+    if first_alt:
+        question_text = _strip_display_markers(block[header_end : first_alt.start()])
+    else:
+        body = block[header_end:]
+        body = GABARITO_LINE.sub("", body)
+        question_text = _strip_display_markers(body)
+
+    if not question_text:
+        return None
+
+    return {
+        "type": "justify",
+        "question": question_text,
+        "answer_key": gabarito,
+    }
+
+
+def _is_justify_block(block: str, header_end: int) -> bool:
+    header_zone = block[header_end : header_end + 200]
+    if JUSTIFY_MARKER.search(block):
+        return True
+    if GABARITO_LINE.search(block) and not _parse_choice_block(block, header_end):
+        return True
+    if "justifique" in header_zone.lower() and not ALT_START.search(block, header_end):
+        return True
+    return False
+
+
+def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
+    """
+    Extrai questões de prova com gabarito.
+    Tipos: choice (múltipla escolha) e justify (dissertativa/justificativa).
+    """
+    matches = list(PERGUNTA_HEADER.finditer(full_text))
+    questions = []
+
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.start() : block_end]
+        header_end = match.end() - match.start()
+
+        parsed = None
+        if _is_justify_block(block, header_end):
+            parsed = _parse_justify_block(block, header_end)
+        else:
+            parsed = _parse_choice_block(block, header_end)
+            if not parsed and GABARITO_LINE.search(block):
+                parsed = _parse_justify_block(block, header_end)
+
+        if parsed:
+            questions.append(parsed)
+        else:
+            _warn(
+                warnings,
+                f"Pergunta {num} ignorada: não foi possível identificar o tipo "
+                "(múltipla escolha com 4 alternativas e CORRETA, ou justificativa com gabarito).",
+            )
+
+    return questions
+
+
+def parse_questions_from_text(full_text: str, warnings: list | None = None) -> list:
+    """Parser legado do quiz — apenas múltipla escolha."""
+    matches = list(PERGUNTA_HEADER.finditer(full_text))
+    questions = []
+
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.start() : block_end]
+        header_end = match.end() - match.start()
+
+        parsed = _parse_choice_block(block, header_end)
+        if parsed:
+            questions.append(
+                {
+                    "question": parsed["question"],
+                    "options": parsed["options"],
+                    "correct": parsed["correct"],
+                }
+            )
+        else:
+            _warn(
+                warnings,
+                f"Pergunta {num} ignorada: enunciado, alternativas ou resposta correta incompletos.",
+            )
+
+    return questions
+
+
+def question_for_student(q: dict) -> dict:
+    """Remove gabarito — visão do aluno."""
+    if q.get("type") == "justify" or "options" not in q:
+        return {"type": "justify", "question": q["question"]}
+    return {
+        "type": "choice",
+        "question": q["question"],
+        "options": q["options"],
+    }
+
+
+def exam_summary(questions: list) -> dict:
+    choice = sum(1 for q in questions if q.get("type") == "choice")
+    justify = sum(1 for q in questions if q.get("type") == "justify")
+    return {"total": len(questions), "choice": choice, "justify": justify}

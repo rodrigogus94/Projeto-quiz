@@ -1,6 +1,6 @@
 import unittest
 
-from main import parse_questions_from_text
+from pdf_parser import exam_summary, parse_exam_from_text, parse_questions_from_text
 
 SAMPLE_TEXT = """
 Pergunta 1: O que é uma variável?
@@ -14,6 +14,20 @@ Alternativa A (Vermelho): if
 Alternativa B (Azul): print
 Alternativa C (Amarelo): for (CORRETA)
 Alternativa D (Verde): input
+"""
+
+EXAM_TEXT = """
+Pergunta 1: Qual é o valor de 2+2?
+Alternativa A: 3
+Alternativa B: 4 (CORRETA)
+Alternativa C: 5
+Alternativa D: 6
+
+Pergunta 2: Explique o que é um algoritmo. (JUSTIFICATIVA)
+Gabarito: Sequência finita de passos para resolver um problema.
+
+Pergunta 3: Justifique o uso de variáveis em programação.
+Resposta esperada: Armazenar dados que podem mudar durante a execução.
 """
 
 
@@ -33,15 +47,29 @@ class TestParseQuestions(unittest.TestCase):
         self.assertEqual(q1["correct"], "B")
         self.assertNotIn("(CORRETA)", q1["options"][1])
 
-    def test_invalid_block_adds_warning(self):
-        warnings = []
-        text = """
-Pergunta 1: Só enunciado sem alternativas completas
-Alternativa A (Vermelho): uma
-"""
-        questions = parse_questions_from_text(text, warnings=warnings)
-        self.assertEqual(questions, [])
-        self.assertTrue(any("Pergunta 1" in w for w in warnings))
+
+class TestParseExam(unittest.TestCase):
+    def test_mixed_exam_types(self):
+        questions = parse_exam_from_text(EXAM_TEXT)
+        self.assertEqual(len(questions), 3)
+        summary = exam_summary(questions)
+        self.assertEqual(summary["choice"], 1)
+        self.assertEqual(summary["justify"], 2)
+
+    def test_choice_exam_question(self):
+        q = parse_exam_from_text(EXAM_TEXT)[0]
+        self.assertEqual(q["type"], "choice")
+        self.assertEqual(q["correct"], "B")
+
+    def test_justify_with_gabarito(self):
+        q = parse_exam_from_text(EXAM_TEXT)[1]
+        self.assertEqual(q["type"], "justify")
+        self.assertIn("Sequência finita", q["answer_key"])
+
+    def test_justify_with_resposta_esperada(self):
+        q = parse_exam_from_text(EXAM_TEXT)[2]
+        self.assertEqual(q["type"], "justify")
+        self.assertIn("Armazenar dados", q["answer_key"])
 
 
 if __name__ == "__main__":

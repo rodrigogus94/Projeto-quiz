@@ -12,6 +12,8 @@ MATERIALS_PATH = DATA_DIR / "materials.json"
 CONFIG_PATH = DATA_DIR / "config.json"
 LEADERBOARD_PATH = DATA_DIR / "leaderboard.json"
 STUDENTS_PATH = DATA_DIR / "students.json"
+EXAMS_PATH = DATA_DIR / "exams.json"
+EXAM_SUBMISSIONS_PATH = DATA_DIR / "exam_submissions.json"
 
 DEFAULT_USERNAME = "professor"
 DEFAULT_PASSWORD = "professor123"
@@ -275,3 +277,132 @@ def student_quiz_stats(student_name: str) -> dict:
 
 def is_registered_student(name: str) -> bool:
     return find_student_by_name(name) is not None
+
+
+# ---------------------------
+# Provas
+# ---------------------------
+def load_exams_store() -> dict:
+    _ensure_data_dir()
+    store = _load_json(EXAMS_PATH, {"exams": [], "active_exam_ids": []})
+    if "exams" not in store:
+        store["exams"] = []
+    if store.get("active_exam_ids") is None:
+        store["active_exam_ids"] = []
+    return store
+
+
+def save_exams_store(store: dict) -> None:
+    _save_json(EXAMS_PATH, store)
+
+
+def list_exams() -> list:
+    return load_exams_store()["exams"]
+
+
+def get_exam(exam_id: str) -> dict | None:
+    for e in list_exams():
+        if e["id"] == exam_id:
+            return e
+    return None
+
+
+def get_active_exam_ids() -> list:
+    return list(load_exams_store().get("active_exam_ids") or [])
+
+
+def get_active_exams() -> list:
+    active_ids = set(get_active_exam_ids())
+    return [e for e in list_exams() if e["id"] in active_ids]
+
+
+def is_exam_active(exam_id: str) -> bool:
+    return exam_id in get_active_exam_ids()
+
+
+def toggle_exam_active(exam_id: str) -> bool:
+    store = load_exams_store()
+    ids = store.setdefault("active_exam_ids", [])
+    if exam_id in ids:
+        ids.remove(exam_id)
+        active = False
+    else:
+        ids.append(exam_id)
+        active = True
+    save_exams_store(store)
+    return active
+
+
+def create_exam(title: str, questions: list) -> dict:
+    exam = {
+        "id": str(uuid.uuid4()),
+        "title": title.strip() or "Prova sem título",
+        "questions": questions,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    store = load_exams_store()
+    store["exams"].append(exam)
+    if len(store["exams"]) == 1:
+        store.setdefault("active_exam_ids", []).append(exam["id"])
+    save_exams_store(store)
+    return exam
+
+
+def update_exam(exam_id: str, title: str, questions: list) -> bool:
+    store = load_exams_store()
+    for e in store["exams"]:
+        if e["id"] == exam_id:
+            e["title"] = title.strip() or e["title"]
+            e["questions"] = questions
+            e["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_exams_store(store)
+            return True
+    return False
+
+
+def delete_exam(exam_id: str) -> None:
+    store = load_exams_store()
+    store["exams"] = [e for e in store["exams"] if e["id"] != exam_id]
+    active_ids = store.setdefault("active_exam_ids", [])
+    if exam_id in active_ids:
+        active_ids.remove(exam_id)
+    save_exams_store(store)
+    submissions = [
+        s for s in load_exam_submissions() if s.get("exam_id") != exam_id
+    ]
+    save_exam_submissions(submissions)
+
+
+def load_exam_submissions() -> list:
+    _ensure_data_dir()
+    data = _load_json(EXAM_SUBMISSIONS_PATH, [])
+    return data if isinstance(data, list) else []
+
+
+def save_exam_submissions(submissions: list) -> None:
+    _save_json(EXAM_SUBMISSIONS_PATH, submissions)
+
+
+def submissions_for_exam(exam_id: str) -> list:
+    return [s for s in load_exam_submissions() if s.get("exam_id") == exam_id]
+
+
+def add_exam_submission(submission: dict) -> None:
+    submissions = load_exam_submissions()
+    submissions.append(submission)
+    save_exam_submissions(submissions)
+
+
+def update_exam_submission(
+    submission_id: str, answers: list, summary: dict | None = None
+) -> bool:
+    submissions = load_exam_submissions()
+    for s in submissions:
+        if s["id"] == submission_id:
+            s["answers"] = answers
+            if summary is not None:
+                s["summary"] = summary
+            s["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_exam_submissions(submissions)
+            return True
+    return False
