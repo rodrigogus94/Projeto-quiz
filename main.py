@@ -9,6 +9,23 @@ import pdfplumber
 import streamlit as st
 
 import quiz_storage
+from auth_users import (
+    ROLES,
+    add_professor_allowlist_email,
+    ensure_name_student_user,
+    get_professor_allowlist,
+    load_users,
+    remove_professor_allowlist_email,
+    resolve_professor_login,
+    resolve_student_google_login,
+    set_user_role,
+)
+from google_auth import (
+    clear_oauth_session,
+    google_oauth_configured,
+    legacy_password_enabled,
+    render_google_login_button,
+)
 from pdf_export import build_exam_pdf_bytes, export_filename
 from auto_grade import (
     CLASSIFICATIONS,
@@ -143,10 +160,30 @@ def validate_questions(questions: list) -> tuple[list, list]:
 # ---------------------------
 # Session state
 # ---------------------------
+def bootstrap_professor_allowlist():
+    try:
+        emails = st.secrets.get("auth", {}).get("allowed_professor_emails", [])
+        for email in emails:
+            if email:
+                add_professor_allowlist_email(email)
+    except Exception:
+        pass
+
+
+def login_user(user: dict):
+    st.session_state.current_user = user
+    st.session_state.role = user.get("role")
+    if user.get("role") == "student" and user.get("name"):
+        st.session_state.preferred_student_name = user["name"]
+        st.session_state.current_student_name = user["name"]
+
+
 def init_session_state():
     migrate_legacy_leaderboard()
+    bootstrap_professor_allowlist()
     defaults = {
         "role": None,
+        "current_user": None,
         "questions": [],
         "current_material_id": None,
         "leaderboard": load_leaderboard(),
@@ -170,6 +207,7 @@ def init_session_state():
 
 
 def logout():
+    clear_oauth_session()
     for key in list(st.session_state.keys()):
         del st.session_state[key]
     st.rerun()
@@ -299,15 +337,19 @@ def render_student_register_form(form_key: str, button_label: str = "Cadastrar-m
             if err:
                 st.error(err)
             else:
-                st.session_state.preferred_student_name = " ".join(name.strip().split())
-                st.success(f"Cadastro realizado! Bem-vindo(a), **{st.session_state.preferred_student_name}**.")
+                clean = " ".join(name.strip().split())
+                ensure_name_student_user(clean)
+                st.session_state.preferred_student_name = clean
+                st.success(f"Cadastro realizado! Bem-vindo(a), **{clean}**.")
                 return True
     return False
 
 
 def render_login():
     st.title("🎮 Quiz Interativo")
-    st.markdown("Escolha como deseja entrar na plataforma.")
+    st.markdown(
+        "Um único cadastro de usuários com **papel (role)** define se você é professor ou aluno."
+    )
 
     col_aluno, col_prof = st.columns(2)
 
@@ -316,36 +358,174 @@ def render_login():
         tab_entrar, tab_cadastro = st.tabs(["Entrar", "Cadastrar-me"])
 
         with tab_entrar:
-            st.markdown("Responda ao quiz ativo definido pelo professor.")
-            if st.button("Entrar como aluno", type="primary", use_container_width=True):
+            st.markdown("Responda quizzes e provas ativos.")
+            if google_oauth_configured():
+                profile = render_google_login_button(
+                    "Entrar com Google",
+                    key="google_student_login",
+                    role_hint="student",
+                )
+                if profile:
+                    user = resolve_student_google_login(profile)
+                    login_user(user)
+                    st.rerun()
+                st.caption("ou")
+            if st.button("Entrar como aluno (sem Google)", use_container_width=True):
                 st.session_state.role = "student"
+                st.session_state.current_user = None
                 st.rerun()
 
         with tab_cadastro:
             st.markdown("Primeiro acesso? Crie seu cadastro para fazer o quiz.")
             if render_student_register_form("register_on_login"):
                 st.session_state.role = "student"
+                st.session_state.current_user = None
                 st.rerun()
 
     with col_prof:
         st.subheader("👨‍🏫 Área do Professor")
-        with st.form("professor_login"):
-            username = st.text_input("Usuário")
-            password = st.text_input("Senha", type="password")
-            submitted = st.form_submit_button("Entrar como professor", use_container_width=True)
-            if submitted:
-                if verify_professor(username, password):
-                    st.session_state.role = "professor"
-                    st.rerun()
+        if google_oauth_configured():
+            st.markdown("Login seguro com sua conta Google institucional.")
+            profile = render_google_login_button(
+                "Entrar com Google",
+                key="google_professor_login",
+                role_hint="professor",
+            )
+            if profile:
+                user, err = resolve_professor_login(profile)
+                if err:
+                    st.error(err)
                 else:
-                    st.error("Usuário ou senha incorretos.")
+                    login_user(user)
+                    st.rerun()
+        elif legacy_password_enabled():
+            st.info("Configure o Google OAuth em `.streamlit/secrets.toml` para login seguro.")
+            with st.form("professor_login"):
+                username = st.text_input("Usuário")
+                password = st.text_input("Senha", type="password")
+                submitted = st.form_submit_button(
+                    "Entrar como professor (legado)", use_container_width=True
+                )
+                if submitted:
+                    if verify_professor(username, password):
+                        login_user(
+                            {
+                                "id": "legacy-professor",
+                                "name": username,
+                                "email": None,
+                                "role": "professor",
+                                "auth_provider": "legacy",
+                            }
+                        )
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha incorretos.")
+        else:
+            st.error(
+                "Login de professor indisponível. Configure `google_oauth` em secrets.toml."
+            )
 
 
 def render_sidebar_logout():
-    role_label = "Professor" if st.session_state.role == "professor" else "Aluno"
-    st.sidebar.caption(f"Conectado como **{role_label}**")
+    user = st.session_state.get("current_user")
+    if user:
+        role_label = "Professor" if user.get("role") == "professor" else "Aluno"
+        name = user.get("name") or user.get("email") or role_label
+        st.sidebar.caption(f"**{name}** ({role_label})")
+        if user.get("email"):
+            st.sidebar.caption(user["email"])
+    else:
+        role_label = "Aluno" if st.session_state.role == "student" else "Visitante"
+        st.sidebar.caption(f"Modo **{role_label}** (sem conta Google)")
     if st.sidebar.button("Sair", use_container_width=True):
         logout()
+
+
+def render_auth_config_tab():
+    st.subheader("Usuários e autenticação")
+    st.caption(
+        "Tabela única de usuários com campo **role** (`professor` ou `student`). "
+        "Professores entram com Google; o papel define o acesso."
+    )
+
+    user = st.session_state.get("current_user")
+    if user:
+        st.write(f"**Sessão atual:** {user.get('name')} — `{user.get('role')}`")
+        if user.get("email"):
+            st.write(f"E-mail: {user['email']}")
+
+    st.markdown("#### E-mails autorizados como professor")
+    allowlist = get_professor_allowlist()
+    if allowlist:
+        for email in allowlist:
+            c1, c2 = st.columns([4, 1])
+            with c1:
+                st.write(email)
+            with c2:
+                if st.button("Remover", key=f"rm_allow_{email}"):
+                    remove_professor_allowlist_email(email)
+                    st.rerun()
+    else:
+        st.info("Nenhum e-mail na lista. Adicione abaixo ou em secrets.toml.")
+
+    new_email = st.text_input("Adicionar e-mail de professor", placeholder="nome@escola.edu.br")
+    if st.button("➕ Autorizar e-mail") and new_email.strip():
+        add_professor_allowlist_email(new_email.strip())
+        st.success(f"E-mail **{new_email.strip()}** autorizado.")
+        st.rerun()
+
+    st.markdown("---")
+    st.markdown("#### Usuários cadastrados")
+    users = load_users()
+    if not users:
+        st.info("Nenhum usuário na tabela ainda. Professores entram via Google; alunos ao se cadastrarem.")
+    else:
+        rows = []
+        for u in users:
+            rows.append(
+                {
+                    "Nome": u.get("name", "—"),
+                    "E-mail": u.get("email") or "—",
+                    "Papel": u.get("role", "—"),
+                    "Login": u.get("auth_provider", "—"),
+                }
+            )
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        st.markdown("##### Alterar papel de um usuário")
+        user_options = {
+            f"{u.get('name', '—')} ({u.get('email') or 'sem e-mail'})": u["id"]
+            for u in users
+            if u.get("email")
+        }
+        if user_options:
+            pick = st.selectbox("Usuário", list(user_options.keys()))
+            new_role = st.selectbox("Novo papel", list(ROLES))
+            if st.button("Salvar papel"):
+                err = set_user_role(user_options[pick], new_role)
+                if err:
+                    st.error(err)
+                else:
+                    st.success("Papel atualizado.")
+                    st.rerun()
+
+    if not google_oauth_configured() and legacy_password_enabled():
+        st.markdown("---")
+        st.subheader("Login legado (sem Google)")
+        cfg = quiz_storage.load_config()
+        new_user = st.text_input("Usuário local", value=cfg["professor_username"])
+        new_pass = st.text_input("Nova senha local", type="password")
+        new_pass2 = st.text_input("Confirmar senha local", type="password")
+        if st.button("Salvar credenciais locais"):
+            if not new_pass:
+                st.error("Informe a nova senha.")
+            elif new_pass != new_pass2:
+                st.error("As senhas não coincidem.")
+            elif len(new_pass) < 6:
+                st.error("Use pelo menos 6 caracteres.")
+            else:
+                update_professor_credentials(new_user, new_pass)
+                st.success("Credenciais locais atualizadas.")
 
 
 # ---------------------------
@@ -802,21 +982,7 @@ def render_professor_panel():
                     st.rerun()
 
     with tab_config:
-        st.subheader("Alterar login do professor")
-        cfg = quiz_storage.load_config()
-        new_user = st.text_input("Novo usuário", value=cfg["professor_username"])
-        new_pass = st.text_input("Nova senha", type="password")
-        new_pass2 = st.text_input("Confirmar nova senha", type="password")
-        if st.button("Salvar credenciais"):
-            if not new_pass:
-                st.error("Informe a nova senha.")
-            elif new_pass != new_pass2:
-                st.error("As senhas não coincidem.")
-            elif len(new_pass) < 6:
-                st.error("Use pelo menos 6 caracteres.")
-            else:
-                update_professor_credentials(new_user, new_pass)
-                st.success("Credenciais atualizadas.")
+        render_auth_config_tab()
 
 
 # ---------------------------

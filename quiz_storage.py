@@ -50,12 +50,15 @@ def load_config() -> dict:
         {
             "professor_username": DEFAULT_USERNAME,
             "professor_password_hash": hash_password(DEFAULT_PASSWORD),
+            "professor_allowlist": [],
         },
     )
     if "professor_password_hash" not in config:
         config["professor_password_hash"] = hash_password(DEFAULT_PASSWORD)
     if "professor_username" not in config:
         config["professor_username"] = DEFAULT_USERNAME
+    if "professor_allowlist" not in config:
+        config["professor_allowlist"] = []
     return config
 
 
