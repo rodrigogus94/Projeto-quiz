@@ -28,9 +28,30 @@ def _get_secret_section(key: str) -> dict:
         return {}
 
 
+_PLACEHOLDER_MARKERS = (
+    "COLE_AQUI",
+    "SEU_CLIENT",
+    "SEU_CLIENT_SECRET",
+    "your_client",
+    "changeme",
+)
+
+
+def _is_placeholder(value: str) -> bool:
+    upper = (value or "").upper()
+    return any(marker in upper for marker in _PLACEHOLDER_MARKERS)
+
+
 def google_oauth_configured() -> bool:
     cfg = _get_secret_section("google_oauth")
-    return bool(cfg.get("client_id") and cfg.get("client_secret") and cfg.get("redirect_uri"))
+    client_id = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+    redirect_uri = cfg.get("redirect_uri", "")
+    if not (client_id and client_secret and redirect_uri):
+        return False
+    if _is_placeholder(client_id) or _is_placeholder(client_secret):
+        return False
+    return True
 
 
 def legacy_password_enabled() -> bool:
