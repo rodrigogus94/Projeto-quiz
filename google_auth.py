@@ -110,10 +110,11 @@ def get_google_oauth_config() -> dict:
 
     client_id = secrets_cfg.get("client_id") or from_json.get("client_id", "")
     client_secret = secrets_cfg.get("client_secret") or from_json.get("client_secret", "")
-    redirect_uri = _resolve_redirect_uri(
-        from_json.get("redirect_uris", []),
-        secrets_cfg.get("redirect_uri", ""),
-    )
+    redirect_uris = list(from_json.get("redirect_uris") or [])
+    if secrets_cfg.get("redirect_uri") and not _is_placeholder(secrets_cfg["redirect_uri"]):
+        redirect_uri = secrets_cfg["redirect_uri"].strip()
+    else:
+        redirect_uri = _resolve_redirect_uri(redirect_uris, "")
 
     return {
         "client_id": client_id,
