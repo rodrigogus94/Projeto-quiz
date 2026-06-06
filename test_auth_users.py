@@ -16,7 +16,7 @@ from quiz_storage import load_config, save_config
 class TestAuthUsers(unittest.TestCase):
     def setUp(self):
         cfg = load_config()
-        cfg["system_admin_email"] = "admin@test.com"
+        cfg["system_admin_email"] = "rodrigogus94@gmail.com"
         cfg["professor_allowlist"] = []
         save_config(cfg)
 
@@ -26,7 +26,7 @@ class TestAuthUsers(unittest.TestCase):
         self.assertIsNotNone(find_student_by_name("Ana Costa"))
 
     def test_is_system_admin(self):
-        self.assertTrue(is_system_admin("admin@test.com"))
+        self.assertTrue(is_system_admin("rodrigogus94@gmail.com"))
         self.assertFalse(is_system_admin("outro@test.com"))
 
     def test_resolve_professor_login_pending(self):
@@ -46,7 +46,7 @@ class TestAuthUsers(unittest.TestCase):
     def test_resolve_professor_login_admin(self):
         profile = {
             "sub": "gid-admin",
-            "email": "admin@test.com",
+            "email": "rodrigogus94@gmail.com",
             "name": "Admin",
         }
         user, err = resolve_professor_login(profile)

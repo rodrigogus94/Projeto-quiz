@@ -291,7 +291,7 @@ client_secret = "GOCSPX-SEU_CLIENT_SECRET"
 redirect_uri = "https://projeto-quiz-rbbnbrjptykghaaz7bdwwf.streamlit.app"
 
 [auth]
-system_admin_email = "rodrigogus94@gmial.com"
+system_admin_email = "rodrigogus94@gmail.com"
 allow_legacy_professor_login = false
 """
 

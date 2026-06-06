@@ -175,7 +175,7 @@ def bootstrap_auth_config():
 
 
 def login_user(user: dict):
-    if is_system_admin(user.get("email")):
+    if is_system_admin(user.get("email")) or user.get("is_admin"):
         user = {**user, "is_admin": True}
     st.session_state.current_user = user
     st.session_state.role = user.get("role")
@@ -858,7 +858,9 @@ def render_professor_panel():
     render_sidebar_logout()
 
     current_user = st.session_state.get("current_user") or {}
-    show_admin_tab = is_system_admin(current_user.get("email"))
+    show_admin_tab = is_system_admin(current_user.get("email")) or bool(
+        current_user.get("is_admin")
+    )
     tab_labels = [
         "📚 Materiais",
         "✏️ Editar questões",

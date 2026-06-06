@@ -10,7 +10,7 @@ DATA_DIR = Path(__file__).parent / "data"
 USERS_PATH = DATA_DIR / "users.json"
 ROLES = ("professor", "student")
 PROFESSOR_STATUSES = ("pending", "approved", "rejected")
-DEFAULT_ADMIN_EMAIL = "rodrigogus94@gmial.com"
+DEFAULT_ADMIN_EMAIL = "rodrigogus94@gmail.com"
 
 
 def _ensure_data_dir():
