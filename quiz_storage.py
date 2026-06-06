@@ -51,6 +51,7 @@ def load_config() -> dict:
             "professor_username": DEFAULT_USERNAME,
             "professor_password_hash": hash_password(DEFAULT_PASSWORD),
             "professor_allowlist": [],
+            "system_admin_email": "rodrigogus94@gmial.com",
         },
     )
     if "professor_password_hash" not in config:
@@ -59,6 +60,8 @@ def load_config() -> dict:
         config["professor_username"] = DEFAULT_USERNAME
     if "professor_allowlist" not in config:
         config["professor_allowlist"] = []
+    if "system_admin_email" not in config:
+        config["system_admin_email"] = "rodrigogus94@gmial.com"
     return config
 
 

@@ -12,9 +12,10 @@ except ImportError:
     requests = None
 
 try:
-    from streamlit_oauth import OAuth2Component
+    from streamlit_oauth import OAuth2Component, StreamlitOauthError
 except ImportError:
     OAuth2Component = None
+    StreamlitOauthError = Exception  # type: ignore
 
 PROJECT_DIR = Path(__file__).parent
 DEFAULT_CLIENT_SECRET_FILE = PROJECT_DIR / ".streamlit" / "google_client_secret.json"
@@ -32,6 +33,16 @@ _PLACEHOLDER_MARKERS = (
     "your_client",
     "changeme",
 )
+
+
+def is_streamlit_cloud() -> bool:
+    import os
+
+    return bool(
+        os.environ.get("STREAMLIT_SHARING_MODE")
+        or os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud"
+        or os.environ.get("STREAMLIT_SERVER_ADDRESS") == "0.0.0.0"
+    )
 
 
 def _get_secret_section(key: str) -> dict:
@@ -111,8 +122,16 @@ def get_google_oauth_config() -> dict:
     client_id = secrets_cfg.get("client_id") or from_json.get("client_id", "")
     client_secret = secrets_cfg.get("client_secret") or from_json.get("client_secret", "")
     redirect_uris = list(from_json.get("redirect_uris") or [])
+    deploy_url = ""
+    try:
+        deploy_url = st.secrets.get("deployment", {}).get("url", "")
+    except Exception:
+        pass
+
     if secrets_cfg.get("redirect_uri") and not _is_placeholder(secrets_cfg["redirect_uri"]):
         redirect_uri = secrets_cfg["redirect_uri"].strip()
+    elif deploy_url and not _is_placeholder(deploy_url):
+        redirect_uri = deploy_url.strip().rstrip("/")
     else:
         redirect_uri = _resolve_redirect_uri(redirect_uris, "")
 
@@ -123,6 +142,37 @@ def get_google_oauth_config() -> dict:
         "client_secret_file": str(json_path),
         "project_id": from_json.get("project_id"),
     }
+
+
+def oauth_diagnosis() -> list[str]:
+    """Lista o que falta para o Google OAuth funcionar (sem expor segredos)."""
+    issues = []
+    secrets_cfg = _get_secret_section("google_oauth")
+    cfg = get_google_oauth_config()
+
+    if not secrets_cfg and not load_oauth_from_json(DEFAULT_CLIENT_SECRET_FILE):
+        issues.append("Nenhuma credencial OAuth encontrada.")
+
+    if not cfg.get("client_id"):
+        issues.append("Falta `client_id` (em Secrets ou no JSON local).")
+    if not cfg.get("client_secret"):
+        issues.append("Falta `client_secret` (em Secrets ou no JSON local).")
+    if not cfg.get("redirect_uri"):
+        issues.append("Falta `redirect_uri` (URL do app, ex.: https://seu-app.streamlit.app).")
+
+    if is_streamlit_cloud():
+        json_exists = Path(cfg.get("client_secret_file", "")).exists()
+        if not json_exists and not secrets_cfg.get("client_id"):
+            issues.append(
+                "Streamlit Cloud: o arquivo JSON local NÃO vai no deploy. "
+                "Cole `client_id`, `client_secret` e `redirect_uri` em "
+                "**Manage app → Settings → Secrets**."
+            )
+
+    if OAuth2Component is None:
+        issues.append("Pacote `streamlit-oauth` não instalado (veja requirements.txt).")
+
+    return issues
 
 
 def google_oauth_configured() -> bool:
@@ -176,6 +226,16 @@ def fetch_google_profile(token: dict) -> dict | None:
         return None
 
 
+def _clear_oauth_state_keys(button_key: str | None = None):
+    if button_key:
+        st.session_state.pop(f"state-{button_key}", None)
+        st.session_state.pop(f"pkce-{button_key}", None)
+        return
+    for k in list(st.session_state.keys()):
+        if k.startswith("state-") or k.startswith("pkce-"):
+            st.session_state.pop(k, None)
+
+
 def render_google_login_button(
     label: str,
     key: str,
@@ -193,13 +253,22 @@ def render_google_login_button(
     cfg = get_google_oauth_config()
     st.session_state["_oauth_role_hint"] = role_hint
 
-    result = oauth.authorize_button(
-        label,
-        cfg["redirect_uri"],
-        SCOPES,
-        key=key,
-        use_container_width=True,
-    )
+    try:
+        result = oauth.authorize_button(
+            label,
+            cfg["redirect_uri"],
+            SCOPES,
+            key=key,
+            use_container_width=True,
+        )
+    except StreamlitOauthError:
+        _clear_oauth_state_keys(key)
+        st.warning(
+            "A sessão do Google expirou ou foi interrompida. "
+            "Clique em **Entrar com Google** novamente."
+        )
+        return None
+
     if not result or "token" not in result:
         return None
 
@@ -210,5 +279,45 @@ def render_google_login_button(
 
 
 def clear_oauth_session():
+    _clear_oauth_state_keys()
     st.session_state.pop("oauth_token", None)
     st.session_state.pop("_oauth_role_hint", None)
+
+
+CLOUD_SECRETS_TEMPLATE = """
+[google_oauth]
+client_id = "SEU_CLIENT_ID.apps.googleusercontent.com"
+client_secret = "GOCSPX-SEU_CLIENT_SECRET"
+redirect_uri = "https://projeto-quiz-rbbnbrjptykghaaz7bdwwf.streamlit.app"
+
+[auth]
+system_admin_email = "rodrigogus94@gmial.com"
+allow_legacy_professor_login = false
+"""
+
+
+def render_oauth_setup_help():
+    """Instruções quando OAuth não está configurado."""
+    if is_streamlit_cloud():
+        st.warning(
+            "Você está no **Streamlit Cloud**. As credenciais do PC "
+            "(`google_client_secret.json`) **não** vêm no deploy do GitHub."
+        )
+        st.markdown("**Passos:**")
+        st.markdown(
+            "1. Abra o app no Cloud → **Manage app** → **Settings** → **Secrets**\n"
+            "2. Cole o bloco abaixo (com seu `client_secret` e e-mail)\n"
+            "3. Salve e clique em **Reboot app**"
+        )
+        st.code(CLOUD_SECRETS_TEMPLATE.strip(), language="toml")
+    else:
+        st.info(
+            "Local: coloque o JSON em `.streamlit/google_client_secret.json` "
+            "e configure `.streamlit/secrets.toml` (ambos ignorados pelo Git)."
+        )
+
+    issues = oauth_diagnosis()
+    if issues:
+        with st.expander("Diagnóstico OAuth"):
+            for item in issues:
+                st.write(f"- {item}")

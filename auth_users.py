@@ -9,6 +9,8 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent / "data"
 USERS_PATH = DATA_DIR / "users.json"
 ROLES = ("professor", "student")
+PROFESSOR_STATUSES = ("pending", "approved", "rejected")
+DEFAULT_ADMIN_EMAIL = "rodrigogus94@gmial.com"
 
 
 def _ensure_data_dir():
@@ -81,11 +83,82 @@ def find_student_by_name(name: str) -> dict | None:
     return None
 
 
-def upsert_google_user(profile: dict, role: str | None = None) -> dict:
+def get_system_admin_email() -> str:
+    try:
+        import streamlit as st
+
+        email = st.secrets.get("auth", {}).get("system_admin_email")
+        if email:
+            return _normalize_email(email)
+    except Exception:
+        pass
+    from quiz_storage import load_config
+
+    cfg = load_config()
+    return _normalize_email(cfg.get("system_admin_email", DEFAULT_ADMIN_EMAIL))
+
+
+def is_system_admin(email: str | None) -> bool:
+    key = _normalize_email(email)
+    return bool(key and key == get_system_admin_email())
+
+
+def is_approved_professor(user: dict | None) -> bool:
+    if not user or user.get("role") != "professor":
+        return False
+    return user.get("status", "approved") == "approved"
+
+
+def get_pending_professors() -> list:
+    return [
+        u
+        for u in load_users()
+        if u.get("role") == "professor"
+        and u.get("status") == "pending"
+        and u.get("active", True)
+    ]
+
+
+def approve_professor(user_id: str) -> str | None:
+    users = load_users()
+    for u in users:
+        if u["id"] != user_id:
+            continue
+        if u.get("status") != "pending":
+            return "Esta solicitação não está pendente."
+        u["role"] = "professor"
+        u["status"] = "approved"
+        u["updated_at"] = datetime.now(timezone.utc).isoformat()
+        save_users(users)
+        return None
+    return "Usuário não encontrado."
+
+
+def reject_professor(user_id: str) -> str | None:
+    users = load_users()
+    for u in users:
+        if u["id"] != user_id:
+            continue
+        if u.get("status") != "pending":
+            return "Esta solicitação não está pendente."
+        u["status"] = "rejected"
+        u["updated_at"] = datetime.now(timezone.utc).isoformat()
+        save_users(users)
+        return None
+    return "Usuário não encontrado."
+
+
+def upsert_google_user(
+    profile: dict,
+    role: str | None = None,
+    status: str | None = None,
+    is_admin: bool | None = None,
+) -> dict:
     """Cria ou atualiza usuário a partir do perfil Google OAuth."""
     google_id = profile.get("sub") or profile.get("id", "")
     email = _normalize_email(profile.get("email"))
     name = profile.get("name") or profile.get("given_name") or email.split("@")[0]
+    admin_flag = is_admin if is_admin is not None else is_system_admin(email)
 
     users = load_users()
     existing = find_user_by_google_id(google_id) or find_user_by_email(email)
@@ -101,6 +174,12 @@ def upsert_google_user(profile: dict, role: str | None = None) -> dict:
                 u["updated_at"] = datetime.now(timezone.utc).isoformat()
                 if role and role in ROLES:
                     u["role"] = role
+                if status in PROFESSOR_STATUSES:
+                    u["status"] = status
+                elif u.get("role") == "professor" and "status" not in u:
+                    u["status"] = "approved"
+                if admin_flag:
+                    u["is_admin"] = True
                 save_users(users)
                 return u
 
@@ -116,6 +195,15 @@ def upsert_google_user(profile: dict, role: str | None = None) -> dict:
         "active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+    if new_role == "professor":
+        if status in PROFESSOR_STATUSES:
+            user["status"] = status
+        elif admin_flag:
+            user["status"] = "approved"
+        else:
+            user["status"] = "pending"
+    if admin_flag:
+        user["is_admin"] = True
     users.append(user)
     save_users(users)
     return user
@@ -151,6 +239,10 @@ def set_user_role(user_id: str, role: str) -> str | None:
     for u in users:
         if u["id"] == user_id:
             u["role"] = role
+            if role == "professor":
+                u["status"] = "approved"
+            else:
+                u.pop("status", None)
             u["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_users(users)
             return None
@@ -207,21 +299,45 @@ def resolve_professor_login(profile: dict) -> tuple[dict | None, str | None]:
     if not email:
         return None, "Conta Google sem e-mail verificado."
 
+    admin_email = get_system_admin_email()
+
+    if is_system_admin(email):
+        return (
+            upsert_google_user(
+                profile,
+                role="professor",
+                status="approved",
+                is_admin=True,
+            ),
+            None,
+        )
+
     user = find_user_by_email(email)
     if user and user.get("role") == "professor":
-        return upsert_google_user(profile, role="professor"), None
+        status = user.get("status", "approved")
+        if status == "approved":
+            return upsert_google_user(profile, role="professor", status="approved"), None
+        if status == "pending":
+            upsert_google_user(profile, role="professor", status="pending")
+            return (
+                None,
+                "Sua solicitação de professor está aguardando aprovação do administrador.",
+            )
+        if status == "rejected":
+            return (
+                None,
+                "Seu acesso como professor foi negado. Contate o administrador do sistema.",
+            )
 
-    if can_be_professor(email):
-        return upsert_google_user(profile, role="professor"), None
-
-    return None, (
-        "Este e-mail não tem permissão de professor. "
-        "Peça ao administrador para adicioná-lo à lista de professores."
+    upsert_google_user(profile, role="professor", status="pending")
+    return (
+        None,
+        f"Solicitação enviada! O administrador ({admin_email}) precisa aprovar seu acesso como professor.",
     )
 
 
 def resolve_student_google_login(profile: dict) -> dict:
     user = find_user_by_email(profile.get("email", ""))
-    if user and user.get("role") == "professor":
-        return upsert_google_user(profile, role="professor")
+    if is_approved_professor(user):
+        return upsert_google_user(profile, role="professor", status="approved")
     return upsert_google_user(profile, role="student")

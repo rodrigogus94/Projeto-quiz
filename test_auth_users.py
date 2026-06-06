@@ -1,9 +1,12 @@
 import unittest
+import uuid
 
 from auth_users import (
-    can_be_professor,
+    approve_professor,
     ensure_name_student_user,
     find_student_by_name,
+    get_pending_professors,
+    is_system_admin,
     resolve_professor_login,
     upsert_google_user,
 )
@@ -13,7 +16,8 @@ from quiz_storage import load_config, save_config
 class TestAuthUsers(unittest.TestCase):
     def setUp(self):
         cfg = load_config()
-        cfg["professor_allowlist"] = ["prof@escola.edu"]
+        cfg["system_admin_email"] = "admin@test.com"
+        cfg["professor_allowlist"] = []
         save_config(cfg)
 
     def test_ensure_name_student_user(self):
@@ -21,19 +25,52 @@ class TestAuthUsers(unittest.TestCase):
         self.assertEqual(user["role"], "student")
         self.assertIsNotNone(find_student_by_name("Ana Costa"))
 
-    def test_professor_allowlist(self):
-        self.assertTrue(can_be_professor("prof@escola.edu"))
-        self.assertFalse(can_be_professor("aluno@escola.edu"))
+    def test_is_system_admin(self):
+        self.assertTrue(is_system_admin("admin@test.com"))
+        self.assertFalse(is_system_admin("outro@test.com"))
 
-    def test_resolve_professor_login(self):
+    def test_resolve_professor_login_pending(self):
+        email = f"prof-{uuid.uuid4().hex[:8]}@escola.edu"
         profile = {
-            "sub": "gid-1",
-            "email": "prof@escola.edu",
+            "sub": f"gid-{uuid.uuid4().hex[:8]}",
+            "email": email,
             "name": "Prof Teste",
+        }
+        user, err = resolve_professor_login(profile)
+        self.assertIsNone(user)
+        self.assertIn("Solicitação enviada", err)
+        pending = get_pending_professors()
+        self.assertEqual(len(pending), 1)
+        self.assertEqual(pending[0]["email"], email)
+
+    def test_resolve_professor_login_admin(self):
+        profile = {
+            "sub": "gid-admin",
+            "email": "admin@test.com",
+            "name": "Admin",
         }
         user, err = resolve_professor_login(profile)
         self.assertIsNone(err)
         self.assertEqual(user["role"], "professor")
+        self.assertEqual(user["status"], "approved")
+        self.assertTrue(user.get("is_admin"))
+
+    def test_approve_professor(self):
+        email = f"novo-{uuid.uuid4().hex[:8]}@escola.edu"
+        profile = {
+            "sub": f"gid-{uuid.uuid4().hex[:8]}",
+            "email": email,
+            "name": "Novo Prof",
+        }
+        resolve_professor_login(profile)
+        pending = get_pending_professors()
+        self.assertEqual(len(pending), 1)
+        err = approve_professor(pending[0]["id"])
+        self.assertIsNone(err)
+        user, err = resolve_professor_login(profile)
+        self.assertIsNone(err)
+        self.assertEqual(user["role"], "professor")
+        self.assertEqual(user["status"], "approved")
 
     def test_upsert_google_student(self):
         user = upsert_google_user(

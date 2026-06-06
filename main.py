@@ -11,11 +11,13 @@ import streamlit as st
 import quiz_storage
 from auth_users import (
     ROLES,
-    add_professor_allowlist_email,
+    approve_professor,
     ensure_name_student_user,
-    get_professor_allowlist,
+    get_pending_professors,
+    get_system_admin_email,
+    is_system_admin,
     load_users,
-    remove_professor_allowlist_email,
+    reject_professor,
     resolve_professor_login,
     resolve_student_google_login,
     set_user_role,
@@ -25,6 +27,7 @@ from google_auth import (
     google_oauth_configured,
     legacy_password_enabled,
     render_google_login_button,
+    render_oauth_setup_help,
 )
 from pdf_export import build_exam_pdf_bytes, export_filename
 from auto_grade import (
@@ -160,17 +163,20 @@ def validate_questions(questions: list) -> tuple[list, list]:
 # ---------------------------
 # Session state
 # ---------------------------
-def bootstrap_professor_allowlist():
+def bootstrap_auth_config():
     try:
-        emails = st.secrets.get("auth", {}).get("allowed_professor_emails", [])
-        for email in emails:
-            if email:
-                add_professor_allowlist_email(email)
+        admin_email = st.secrets.get("auth", {}).get("system_admin_email")
+        if admin_email:
+            cfg = quiz_storage.load_config()
+            cfg["system_admin_email"] = admin_email.strip().lower()
+            quiz_storage.save_config(cfg)
     except Exception:
         pass
 
 
 def login_user(user: dict):
+    if is_system_admin(user.get("email")):
+        user = {**user, "is_admin": True}
     st.session_state.current_user = user
     st.session_state.role = user.get("role")
     if user.get("role") == "student" and user.get("name"):
@@ -180,7 +186,7 @@ def login_user(user: dict):
 
 def init_session_state():
     migrate_legacy_leaderboard()
-    bootstrap_professor_allowlist()
+    bootstrap_auth_config()
     defaults = {
         "role": None,
         "current_user": None,
@@ -345,85 +351,105 @@ def render_student_register_form(form_key: str, button_label: str = "Cadastrar-m
     return False
 
 
+def render_student_login_section():
+    st.subheader("👨‍🎓 Área do Aluno")
+    tab_entrar, tab_cadastro = st.tabs(["Entrar", "Cadastrar-me"])
+
+    with tab_entrar:
+        st.markdown("Responda quizzes e provas ativos.")
+        if google_oauth_configured():
+            profile = render_google_login_button(
+                "Entrar com Google",
+                key="google_login",
+                role_hint="student",
+            )
+            if profile:
+                user = resolve_student_google_login(profile)
+                login_user(user)
+                st.rerun()
+            st.caption("ou")
+        if st.button("Entrar como aluno (sem Google)", use_container_width=True):
+            st.session_state.role = "student"
+            st.session_state.current_user = None
+            st.rerun()
+
+    with tab_cadastro:
+        st.markdown("Primeiro acesso? Crie seu cadastro para fazer o quiz.")
+        if render_student_register_form("register_on_login"):
+            st.session_state.role = "student"
+            st.session_state.current_user = None
+            st.rerun()
+
+
+def render_professor_login_section():
+    st.subheader("👨‍🏫 Área do Professor")
+    if google_oauth_configured():
+        st.markdown("Login seguro com sua conta Google.")
+        st.caption(
+            "Novos professores precisam de aprovação do administrador do sistema "
+            f"({get_system_admin_email()}) antes de acessar o painel."
+        )
+        profile = render_google_login_button(
+            "Entrar com Google",
+            key="google_login",
+            role_hint="professor",
+        )
+        if profile:
+            user, err = resolve_professor_login(profile)
+            if err:
+                if err.startswith("Solicitação enviada"):
+                    st.info(err)
+                else:
+                    st.error(err)
+            else:
+                login_user(user)
+                st.rerun()
+    else:
+        render_oauth_setup_help()
+        if legacy_password_enabled():
+            with st.expander("Login legado (somente desenvolvimento)"):
+                st.caption("Padrão local: usuário `professor` / senha `professor123`")
+                with st.form("professor_login"):
+                    username = st.text_input("Usuário")
+                    password = st.text_input("Senha", type="password")
+                    submitted = st.form_submit_button(
+                        "Entrar como professor (legado)", use_container_width=True
+                    )
+                    if submitted:
+                        if verify_professor(username, password):
+                            login_user(
+                                {
+                                    "id": "legacy-professor",
+                                    "name": username,
+                                    "email": None,
+                                    "role": "professor",
+                                    "auth_provider": "legacy",
+                                }
+                            )
+                            st.rerun()
+                        else:
+                            st.error("Usuário ou senha incorretos.")
+        else:
+            st.error("Login de professor indisponível até configurar o Google OAuth.")
+
+
 def render_login():
     st.title("🎮 Quiz Interativo")
     st.markdown(
         "Um único cadastro de usuários com **papel (role)** define se você é professor ou aluno."
     )
 
-    col_aluno, col_prof = st.columns(2)
+    modo = st.radio(
+        "Como deseja entrar?",
+        ["👨‍🎓 Aluno", "👨‍🏫 Professor"],
+        horizontal=True,
+        key="login_mode",
+    )
 
-    with col_aluno:
-        st.subheader("👨‍🎓 Área do Aluno")
-        tab_entrar, tab_cadastro = st.tabs(["Entrar", "Cadastrar-me"])
-
-        with tab_entrar:
-            st.markdown("Responda quizzes e provas ativos.")
-            if google_oauth_configured():
-                profile = render_google_login_button(
-                    "Entrar com Google",
-                    key="google_student_login",
-                    role_hint="student",
-                )
-                if profile:
-                    user = resolve_student_google_login(profile)
-                    login_user(user)
-                    st.rerun()
-                st.caption("ou")
-            if st.button("Entrar como aluno (sem Google)", use_container_width=True):
-                st.session_state.role = "student"
-                st.session_state.current_user = None
-                st.rerun()
-
-        with tab_cadastro:
-            st.markdown("Primeiro acesso? Crie seu cadastro para fazer o quiz.")
-            if render_student_register_form("register_on_login"):
-                st.session_state.role = "student"
-                st.session_state.current_user = None
-                st.rerun()
-
-    with col_prof:
-        st.subheader("👨‍🏫 Área do Professor")
-        if google_oauth_configured():
-            st.markdown("Login seguro com sua conta Google institucional.")
-            profile = render_google_login_button(
-                "Entrar com Google",
-                key="google_professor_login",
-                role_hint="professor",
-            )
-            if profile:
-                user, err = resolve_professor_login(profile)
-                if err:
-                    st.error(err)
-                else:
-                    login_user(user)
-                    st.rerun()
-        elif legacy_password_enabled():
-            st.info("Configure o Google OAuth em `.streamlit/secrets.toml` para login seguro.")
-            with st.form("professor_login"):
-                username = st.text_input("Usuário")
-                password = st.text_input("Senha", type="password")
-                submitted = st.form_submit_button(
-                    "Entrar como professor (legado)", use_container_width=True
-                )
-                if submitted:
-                    if verify_professor(username, password):
-                        login_user(
-                            {
-                                "id": "legacy-professor",
-                                "name": username,
-                                "email": None,
-                                "role": "professor",
-                                "auth_provider": "legacy",
-                            }
-                        )
-                        st.rerun()
-                    else:
-                        st.error("Usuário ou senha incorretos.")
-        else:
-            st.error(
-                "Login de professor indisponível. Configure `google_oauth` em secrets.toml."
-            )
+    if modo.startswith("👨‍🎓"):
+        render_student_login_section()
+    else:
+        render_professor_login_section()
 
 
 def render_sidebar_logout():
@@ -441,11 +467,46 @@ def render_sidebar_logout():
         logout()
 
 
+def render_admin_approvals_tab():
+    st.subheader("Aprovação de professores")
+    st.caption(f"Administrador do sistema: **{get_system_admin_email()}**")
+
+    pending = get_pending_professors()
+    if not pending:
+        st.success("Nenhuma solicitação pendente no momento.")
+        return
+
+    st.warning(f"{len(pending)} solicitação(ões) aguardando sua aprovação.")
+    for u in pending:
+        with st.container(border=True):
+            st.write(f"**{u.get('name', '—')}**")
+            st.write(f"E-mail: {u.get('email', '—')}")
+            if u.get("created_at"):
+                st.caption(f"Solicitado em: {u['created_at']}")
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("✅ Aprovar", key=f"approve_{u['id']}", use_container_width=True):
+                    err = approve_professor(u["id"])
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success(f"Professor **{u.get('name')}** aprovado.")
+                        st.rerun()
+            with c2:
+                if st.button("❌ Negar", key=f"reject_{u['id']}", use_container_width=True):
+                    err = reject_professor(u["id"])
+                    if err:
+                        st.error(err)
+                    else:
+                        st.info(f"Solicitação de **{u.get('name')}** negada.")
+                        st.rerun()
+
+
 def render_auth_config_tab():
     st.subheader("Usuários e autenticação")
     st.caption(
-        "Tabela única de usuários com campo **role** (`professor` ou `student`). "
-        "Professores entram com Google; o papel define o acesso."
+        "Professores entram com Google. Novos cadastros ficam **pendentes** até o "
+        "administrador aprovar na aba **Aprovações**."
     )
 
     user = st.session_state.get("current_user")
@@ -453,26 +514,8 @@ def render_auth_config_tab():
         st.write(f"**Sessão atual:** {user.get('name')} — `{user.get('role')}`")
         if user.get("email"):
             st.write(f"E-mail: {user['email']}")
-
-    st.markdown("#### E-mails autorizados como professor")
-    allowlist = get_professor_allowlist()
-    if allowlist:
-        for email in allowlist:
-            c1, c2 = st.columns([4, 1])
-            with c1:
-                st.write(email)
-            with c2:
-                if st.button("Remover", key=f"rm_allow_{email}"):
-                    remove_professor_allowlist_email(email)
-                    st.rerun()
-    else:
-        st.info("Nenhum e-mail na lista. Adicione abaixo ou em secrets.toml.")
-
-    new_email = st.text_input("Adicionar e-mail de professor", placeholder="nome@escola.edu.br")
-    if st.button("➕ Autorizar e-mail") and new_email.strip():
-        add_professor_allowlist_email(new_email.strip())
-        st.success(f"E-mail **{new_email.strip()}** autorizado.")
-        st.rerun()
+        if user.get("is_admin") or is_system_admin(user.get("email")):
+            st.success(f"Você é o administrador do sistema ({get_system_admin_email()}).")
 
     st.markdown("---")
     st.markdown("#### Usuários cadastrados")
@@ -482,11 +525,13 @@ def render_auth_config_tab():
     else:
         rows = []
         for u in users:
+            status = u.get("status", "—") if u.get("role") == "professor" else "—"
             rows.append(
                 {
                     "Nome": u.get("name", "—"),
                     "E-mail": u.get("email") or "—",
                     "Papel": u.get("role", "—"),
+                    "Status": status,
                     "Login": u.get("auth_provider", "—"),
                 }
             )
@@ -812,16 +857,21 @@ def render_professor_panel():
     st.title("👨‍🏫 Painel do Professor")
     render_sidebar_logout()
 
-    tab_mat, tab_edit, tab_exams, tab_students, tab_results, tab_config = st.tabs(
-        [
-            "📚 Materiais",
-            "✏️ Editar questões",
-            "📝 Provas",
-            "👥 Alunos cadastrados",
-            "📊 Resultados",
-            "🔐 Conta",
-        ]
-    )
+    current_user = st.session_state.get("current_user") or {}
+    show_admin_tab = is_system_admin(current_user.get("email"))
+    tab_labels = [
+        "📚 Materiais",
+        "✏️ Editar questões",
+        "📝 Provas",
+        "👥 Alunos cadastrados",
+        "📊 Resultados",
+        "🔐 Conta",
+    ]
+    if show_admin_tab:
+        tab_labels.append("🛡️ Aprovações")
+    tabs = st.tabs(tab_labels)
+    tab_mat, tab_edit, tab_exams, tab_students, tab_results, tab_config = tabs[:6]
+    tab_admin = tabs[6] if show_admin_tab else None
 
     materials = list_materials()
     active_ids = set(get_active_material_ids())
@@ -983,6 +1033,10 @@ def render_professor_panel():
 
     with tab_config:
         render_auth_config_tab()
+
+    if tab_admin is not None:
+        with tab_admin:
+            render_admin_approvals_tab()
 
 
 # ---------------------------
