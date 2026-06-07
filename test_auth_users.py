@@ -8,6 +8,7 @@ from auth_users import (
     get_pending_professors,
     is_system_admin,
     resolve_professor_login,
+    resolve_unified_google_login,
     upsert_google_user,
 )
 from quiz_storage import load_config, save_config
@@ -71,6 +72,28 @@ class TestAuthUsers(unittest.TestCase):
         self.assertIsNone(err)
         self.assertEqual(user["role"], "professor")
         self.assertEqual(user["status"], "approved")
+
+    def test_resolve_unified_google_login_student(self):
+        email = f"aluno-{uuid.uuid4().hex[:8]}@escola.edu"
+        profile = {
+            "sub": f"gid-{uuid.uuid4().hex[:8]}",
+            "email": email,
+            "name": "Aluno Novo",
+        }
+        user, err = resolve_unified_google_login(profile)
+        self.assertIsNone(err)
+        self.assertEqual(user["role"], "student")
+
+    def test_resolve_unified_google_login_admin(self):
+        profile = {
+            "sub": "gid-admin-unified",
+            "email": "rodrigogus94@gmail.com",
+            "name": "Admin",
+        }
+        user, err = resolve_unified_google_login(profile)
+        self.assertIsNone(err)
+        self.assertEqual(user["role"], "professor")
+        self.assertTrue(user.get("is_admin"))
 
     def test_upsert_google_student(self):
         user = upsert_google_user(

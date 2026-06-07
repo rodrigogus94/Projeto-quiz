@@ -18,8 +18,7 @@ from auth_users import (
     is_system_admin,
     load_users,
     reject_professor,
-    resolve_professor_login,
-    resolve_student_google_login,
+    resolve_unified_google_login,
     set_user_role,
 )
 from google_auth import (
@@ -503,12 +502,6 @@ def inject_login_page_css():
             box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
             transform: translateY(-1px);
         }}
-        .block-container:has(#quiz-login-active) .google-oauth-center--prof .stButton > button {{
-            background-image: none !important;
-            font-size: 1.15rem !important;
-            color: {LOGIN_ACCENT} !important;
-            font-weight: 800 !important;
-        }}
         .google-oauth-label {{
             margin-top: 0.55rem;
             color: #64748b;
@@ -581,19 +574,12 @@ def inject_login_page_css():
             border-radius: 12px;
             border: 1px solid #e2e8f0;
         }}
-        .login-section-label {{
-            color: #334155;
-            font-size: 0.92rem;
-            font-weight: 700;
-            margin: 1.5rem 0 0.75rem;
-            text-align: center;
-        }}
-        .login-professor-note {{
+        .login-footnote {{
             color: #94a3b8;
             font-size: 0.76rem;
             text-align: center;
-            margin: 0.5rem 0 0;
-            line-height: 1.45;
+            margin: 1.25rem 0 0;
+            line-height: 1.5;
         }}
         </style>
         """,
@@ -624,16 +610,10 @@ def render_student_register_form(form_key: str, button_label: str = "Cadastrar-m
     return False
 
 
-def _handle_student_google(profile: dict):
-    user = resolve_student_google_login(profile)
-    login_user(user)
-    st.rerun()
-
-
-def _handle_professor_google(profile: dict):
-    user, err = resolve_professor_login(profile)
+def _handle_unified_google(profile: dict):
+    user, err = resolve_unified_google_login(profile)
     if err:
-        if err.startswith("Solicitação enviada"):
+        if "aguarda aprovação" in err:
             st.info(err)
         else:
             st.error(err)
@@ -642,15 +622,14 @@ def _handle_professor_google(profile: dict):
         st.rerun()
 
 
-def render_google_icon_login(key: str, role_hint: str, *, professor: bool = False) -> dict | None:
+def render_google_icon_login(key: str) -> dict | None:
     if not google_oauth_configured():
         return None
-    extra = " google-oauth-center--prof" if professor else ""
-    st.markdown(f'<div class="google-oauth-center{extra}">', unsafe_allow_html=True)
+    st.markdown('<div class="google-oauth-center">', unsafe_allow_html=True)
     profile = render_google_login_button(
         "G",
         key=key,
-        role_hint=role_hint,
+        role_hint="unified",
         use_container_width=False,
     )
     st.markdown("</div>", unsafe_allow_html=True)
@@ -659,18 +638,10 @@ def render_google_icon_login(key: str, role_hint: str, *, professor: bool = Fals
 
 def render_login_signup_panel():
     st.markdown('<p class="login-form-title">Criar conta</p>', unsafe_allow_html=True)
-
-    if google_oauth_configured():
-        profile = render_google_icon_login("oauth_student_signup", "student")
-        if profile:
-            _handle_student_google(profile)
-        st.markdown('<p class="google-oauth-label">Continuar com Google</p>', unsafe_allow_html=True)
-        st.markdown('<div class="login-or-line">ou use seu nome</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(
-            '<p class="login-form-hint">Informe seu nome para participar dos quizzes.</p>',
-            unsafe_allow_html=True,
-        )
+    st.markdown(
+        '<p class="login-form-hint">Informe seu nome para participar dos quizzes.</p>',
+        unsafe_allow_html=True,
+    )
 
     with st.form("register_on_login"):
         name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
@@ -685,40 +656,13 @@ def render_login_signup_panel():
 
 def render_login_signin_panel():
     st.markdown('<p class="login-form-title">Entrar</p>', unsafe_allow_html=True)
-    st.markdown('<p class="login-section-label">👨‍🎓 Área do aluno</p>', unsafe_allow_html=True)
 
     if google_oauth_configured():
-        profile = render_google_icon_login("oauth_student_signin", "student")
+        profile = render_google_icon_login("oauth_signin")
         if profile:
-            _handle_student_google(profile)
+            _handle_unified_google(profile)
         st.markdown('<p class="google-oauth-label">Entrar com Google</p>', unsafe_allow_html=True)
         st.markdown('<div class="login-or-line">ou</div>', unsafe_allow_html=True)
-
-    if st.button(
-        "Continuar sem Google",
-        use_container_width=True,
-        key="student_no_google",
-        type="secondary",
-    ):
-        st.session_state.role = "student"
-        st.session_state.current_user = None
-        st.rerun()
-
-    st.markdown('<p class="login-section-label">👨‍🏫 Área do professor</p>', unsafe_allow_html=True)
-    if google_oauth_configured():
-        profile = render_google_icon_login(
-            "oauth_professor_signin",
-            "professor",
-            professor=True,
-        )
-        if profile:
-            _handle_professor_google(profile)
-        st.markdown('<p class="google-oauth-label">Entrar como professor</p>', unsafe_allow_html=True)
-        st.markdown(
-            f'<p class="login-professor-note">Novos professores precisam de aprovação '
-            f"do administrador ({get_system_admin_email()}).</p>",
-            unsafe_allow_html=True,
-        )
     else:
         render_oauth_setup_help()
         if legacy_password_enabled():
@@ -742,6 +686,22 @@ def render_login_signin_panel():
                         else:
                             st.error("Usuário ou senha incorretos.")
 
+    if st.button(
+        "Continuar sem conta Google",
+        use_container_width=True,
+        key="student_no_google",
+        type="secondary",
+    ):
+        st.session_state.role = "student"
+        st.session_state.current_user = None
+        st.rerun()
+
+    st.markdown(
+        f'<p class="login-footnote">O administrador ({get_system_admin_email()}) '
+        "libera o acesso de professores na aba Aprovações.</p>",
+        unsafe_allow_html=True,
+    )
+
 
 def render_login():
     inject_login_page_css()
@@ -763,7 +723,7 @@ def render_login():
             st.markdown(
                 '<div class="login-left-bg-top"><div class="login-left-inner">'
                 "<h2>Bem-vindo de volta!</h2>"
-                "<p>Já tem cadastro? Entre e continue de onde parou nos quizzes e provas.</p>"
+                "<p>Já tem cadastro? Entre com Google ou pelo nome cadastrado.</p>"
                 "</div></div>",
                 unsafe_allow_html=True,
             )
@@ -777,7 +737,7 @@ def render_login():
             st.markdown(
                 '<div class="login-left-bg-top"><div class="login-left-inner">'
                 "<h2>Novo por aqui?</h2>"
-                "<p>Crie sua conta em segundos e comece a responder quizzes agora mesmo.</p>"
+                "<p>Primeiro acesso? Cadastre seu nome e comece a responder os quizzes.</p>"
                 "</div></div>",
                 unsafe_allow_html=True,
             )
@@ -848,8 +808,8 @@ def render_admin_approvals_tab():
 def render_auth_config_tab():
     st.subheader("Usuários e autenticação")
     st.caption(
-        "Professores entram com Google. Novos cadastros ficam **pendentes** até o "
-        "administrador aprovar na aba **Aprovações**."
+        "Todos entram com Google ou pelo nome (alunos). Você libera professores na aba "
+        "**Aprovações** ou alterando o papel abaixo."
     )
 
     user = st.session_state.get("current_user")

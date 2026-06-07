@@ -341,3 +341,40 @@ def resolve_student_google_login(profile: dict) -> dict:
     if is_approved_professor(user):
         return upsert_google_user(profile, role="professor", status="approved")
     return upsert_google_user(profile, role="student")
+
+
+def resolve_unified_google_login(profile: dict) -> tuple[dict | None, str | None]:
+    """Login único com Google: admin/professor aprovado entram no painel; demais são alunos."""
+    email = _normalize_email(profile.get("email"))
+    if not email:
+        return None, "Conta Google sem e-mail verificado."
+
+    if is_system_admin(email):
+        return (
+            upsert_google_user(
+                profile,
+                role="professor",
+                status="approved",
+                is_admin=True,
+            ),
+            None,
+        )
+
+    user = find_user_by_email(email)
+    if user and user.get("role") == "professor":
+        status = user.get("status", "approved")
+        if status == "approved":
+            return upsert_google_user(profile, role="professor", status="approved"), None
+        if status == "pending":
+            upsert_google_user(profile, role="professor", status="pending")
+            return (
+                None,
+                "Seu acesso ainda aguarda aprovação do administrador.",
+            )
+        if status == "rejected":
+            return (
+                None,
+                "Seu acesso foi negado. Contate o administrador do sistema.",
+            )
+
+    return upsert_google_user(profile, role="student"), None
