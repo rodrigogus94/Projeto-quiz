@@ -9,7 +9,8 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent / "data"
 USERS_PATH = DATA_DIR / "users.json"
 ROLES = ("professor", "student")
-PROFESSOR_STATUSES = ("pending", "approved", "rejected")
+ACCOUNT_STATUSES = ("pending", "approved", "rejected")
+PROFESSOR_STATUSES = ACCOUNT_STATUSES
 DEFAULT_ADMIN_EMAIL = "rodrigogus94@gmail.com"
 
 
@@ -103,49 +104,91 @@ def is_system_admin(email: str | None) -> bool:
     return bool(key and key == get_system_admin_email())
 
 
+def user_account_status(user: dict | None) -> str:
+    if not user:
+        return "approved"
+    return user.get("status", "approved")
+
+
+def is_user_approved(user: dict | None) -> bool:
+    if not user or not user.get("active", True):
+        return False
+    if is_system_admin(user.get("email")) or user.get("is_admin"):
+        return True
+    return user_account_status(user) == "approved"
+
+
 def is_approved_professor(user: dict | None) -> bool:
     if not user or user.get("role") != "professor":
         return False
-    return user.get("status", "approved") == "approved"
+    return is_user_approved(user)
 
 
-def get_pending_professors() -> list:
+def is_approved_student_name(name: str) -> bool:
+    user = find_student_by_name(name)
+    if not user:
+        from quiz_storage import find_student_by_name as find_roster_student
+
+        return find_roster_student(name) is not None
+    return is_user_approved(user)
+
+
+def get_pending_users() -> list:
     return [
         u
         for u in load_users()
-        if u.get("role") == "professor"
-        and u.get("status") == "pending"
-        and u.get("active", True)
+        if user_account_status(u) == "pending" and u.get("active", True)
     ]
 
 
-def approve_professor(user_id: str) -> str | None:
+def get_pending_professors() -> list:
+    return [u for u in get_pending_users() if u.get("role") == "professor"]
+
+
+def _sync_approved_student_to_roster(name: str) -> None:
+    from quiz_storage import add_student, find_student_by_name
+
+    clean = " ".join(name.strip().split())
+    if clean and not find_student_by_name(clean):
+        add_student(clean)
+
+
+def approve_user(user_id: str) -> str | None:
     users = load_users()
     for u in users:
         if u["id"] != user_id:
             continue
-        if u.get("status") != "pending":
+        if user_account_status(u) != "pending":
             return "Esta solicitação não está pendente."
-        u["role"] = "professor"
         u["status"] = "approved"
         u["updated_at"] = datetime.now(timezone.utc).isoformat()
         save_users(users)
+        if u.get("role") == "student":
+            _sync_approved_student_to_roster(u.get("name", ""))
         return None
     return "Usuário não encontrado."
 
 
-def reject_professor(user_id: str) -> str | None:
+def reject_user(user_id: str) -> str | None:
     users = load_users()
     for u in users:
         if u["id"] != user_id:
             continue
-        if u.get("status") != "pending":
+        if user_account_status(u) != "pending":
             return "Esta solicitação não está pendente."
         u["status"] = "rejected"
         u["updated_at"] = datetime.now(timezone.utc).isoformat()
         save_users(users)
         return None
     return "Usuário não encontrado."
+
+
+def approve_professor(user_id: str) -> str | None:
+    return approve_user(user_id)
+
+
+def reject_professor(user_id: str) -> str | None:
+    return reject_user(user_id)
 
 
 def upsert_google_user(
@@ -174,9 +217,9 @@ def upsert_google_user(
                 u["updated_at"] = datetime.now(timezone.utc).isoformat()
                 if role and role in ROLES:
                     u["role"] = role
-                if status in PROFESSOR_STATUSES:
+                if status in ACCOUNT_STATUSES:
                     u["status"] = status
-                elif u.get("role") == "professor" and "status" not in u:
+                elif "status" not in u:
                     u["status"] = "approved"
                 if admin_flag:
                     u["is_admin"] = True
@@ -195,13 +238,14 @@ def upsert_google_user(
         "active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
-    if new_role == "professor":
-        if status in PROFESSOR_STATUSES:
-            user["status"] = status
-        elif admin_flag:
-            user["status"] = "approved"
-        else:
-            user["status"] = "pending"
+    if status in ACCOUNT_STATUSES:
+        user["status"] = status
+    elif admin_flag:
+        user["status"] = "approved"
+    elif new_role == "professor":
+        user["status"] = "pending"
+    else:
+        user["status"] = "pending"
     if admin_flag:
         user["is_admin"] = True
     users.append(user)
@@ -209,11 +253,52 @@ def upsert_google_user(
     return user
 
 
-def ensure_name_student_user(name: str) -> dict:
+def register_student_request(name: str) -> tuple[dict | None, str | None]:
+    """Solicita cadastro de aluno por nome — fica pendente até o admin aprovar."""
+    name = " ".join(name.strip().split())
+    if not name:
+        return None, "Informe o nome."
+    existing = find_student_by_name(name)
+    if existing:
+        status = user_account_status(existing)
+        if status == "pending":
+            return None, "Seu cadastro já está aguardando aprovação do administrador."
+        if status == "approved":
+            return None, "Já existe uma conta com este nome."
+        if status == "rejected":
+            return None, "Seu cadastro foi negado. Contate o administrador do sistema."
+    user = {
+        "id": str(uuid.uuid4()),
+        "email": None,
+        "name": name,
+        "google_id": None,
+        "picture": None,
+        "role": "student",
+        "auth_provider": "local",
+        "status": "pending",
+        "active": True,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    users = load_users()
+    users.append(user)
+    save_users(users)
+    return user, None
+
+
+def ensure_name_student_user(name: str, *, auto_approve: bool = False) -> dict:
     """Vincula cadastro por nome à tabela de usuários (role=student)."""
     name = " ".join(name.strip().split())
     existing = find_student_by_name(name)
     if existing:
+        if auto_approve and user_account_status(existing) != "approved":
+            users = load_users()
+            for u in users:
+                if u["id"] == existing["id"]:
+                    u["status"] = "approved"
+                    u["updated_at"] = datetime.now(timezone.utc).isoformat()
+                    save_users(users)
+                    existing = u
+                    break
         return existing
     user = {
         "id": str(uuid.uuid4()),
@@ -223,12 +308,15 @@ def ensure_name_student_user(name: str) -> dict:
         "picture": None,
         "role": "student",
         "auth_provider": "local",
+        "status": "approved" if auto_approve else "pending",
         "active": True,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     users = load_users()
     users.append(user)
     save_users(users)
+    if auto_approve:
+        _sync_approved_student_to_roster(name)
     return user
 
 
@@ -242,7 +330,8 @@ def set_user_role(user_id: str, role: str) -> str | None:
             if role == "professor":
                 u["status"] = "approved"
             else:
-                u.pop("status", None)
+                u["status"] = "approved"
+                _sync_approved_student_to_roster(u.get("name", ""))
             u["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_users(users)
             return None
@@ -344,10 +433,12 @@ def resolve_student_google_login(profile: dict) -> dict:
 
 
 def resolve_unified_google_login(profile: dict) -> tuple[dict | None, str | None]:
-    """Login único com Google: admin/professor aprovado entram no painel; demais são alunos."""
+    """Login único com Google: só entra após aprovação do administrador."""
     email = _normalize_email(profile.get("email"))
     if not email:
         return None, "Conta Google sem e-mail verificado."
+
+    admin_email = get_system_admin_email()
 
     if is_system_admin(email):
         return (
@@ -361,20 +452,28 @@ def resolve_unified_google_login(profile: dict) -> tuple[dict | None, str | None
         )
 
     user = find_user_by_email(email)
-    if user and user.get("role") == "professor":
-        status = user.get("status", "approved")
-        if status == "approved":
-            return upsert_google_user(profile, role="professor", status="approved"), None
+    if user:
+        status = user_account_status(user)
         if status == "pending":
-            upsert_google_user(profile, role="professor", status="pending")
+            upsert_google_user(profile, status="pending")
             return (
                 None,
-                "Seu acesso ainda aguarda aprovação do administrador.",
+                "Sua conta ainda aguarda aprovação do administrador.",
             )
         if status == "rejected":
             return (
                 None,
                 "Seu acesso foi negado. Contate o administrador do sistema.",
             )
+        if user.get("role") == "professor" and status == "approved":
+            return upsert_google_user(profile, role="professor", status="approved"), None
+        if user.get("role") == "student" and status == "approved":
+            approved = upsert_google_user(profile, role="student", status="approved")
+            _sync_approved_student_to_roster(approved.get("name", ""))
+            return approved, None
 
-    return upsert_google_user(profile, role="student"), None
+    upsert_google_user(profile, role="student", status="pending")
+    return (
+        None,
+        f"Conta criada! O administrador ({admin_email}) precisa aprovar seu acesso.",
+    )

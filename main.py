@@ -448,13 +448,14 @@ def _render_account_settings_menu():
 
 
 def _register_student_name(name: str) -> tuple[bool, str]:
-    _, err = add_student(name)
-    if err:
-        st.error(err)
-        return False, ""
     clean = " ".join(name.strip().split())
-    auth_users.ensure_name_student_user(clean)
-    st.session_state.preferred_student_name = clean
+    _, err = auth_users.register_student_request(clean)
+    if err:
+        if "aguardando aprovação" in err:
+            st.info(err)
+        else:
+            st.error(err)
+        return False, ""
     return True, clean
 
 
@@ -465,7 +466,11 @@ def render_student_register_form(form_key: str, button_label: str = "Cadastrar-m
         if submitted:
             ok, clean = _register_student_name(name)
             if ok:
-                st.success(f"Cadastro realizado! Bem-vindo(a), **{clean}**.")
+                admin_email = auth_users.get_system_admin_email()
+                st.success(
+                    f"Solicitação enviada para **{clean}**! "
+                    f"O administrador ({admin_email}) precisa aprovar seu acesso."
+                )
                 return True
     return False
 
@@ -520,11 +525,7 @@ def render_login_signup_panel():
         name = st.text_input("Nome", placeholder="Nome completo")
         submitted = st.form_submit_button("CADASTRAR-SE", use_container_width=True, type="primary")
         if submitted:
-            ok, _ = _register_student_name(name)
-            if ok:
-                st.session_state.role = "student"
-                st.session_state.current_user = None
-                st.rerun()
+            _register_student_name(name)
 
     st.markdown(
         '<p class="kahoot-footnote">Já tem conta? Clique em <b>ENTRAR</b> no painel esquerdo.</p>'
@@ -578,7 +579,7 @@ def render_login_signin_panel():
 
     st.markdown(
         f'<p class="kahoot-footnote">O administrador ({auth_users.get_system_admin_email()}) '
-        "libera professores na aba Aprovações.</p></div>",
+        "aprova novas contas na aba Aprovações.</p></div>",
         unsafe_allow_html=True,
     )
 
@@ -775,33 +776,39 @@ def render_student_sidebar_nav():
 
 
 def render_admin_approvals_tab():
-    st.subheader("Aprovação de professores")
-    st.caption(f"Administrador do sistema: **{auth_users.get_system_admin_email()}**")
+    st.subheader("Aprovação de contas")
+    st.caption(
+        f"Administrador do sistema: **{auth_users.get_system_admin_email()}**. "
+        "Novas contas (Google ou por nome) só acessam o sistema após aprovação."
+    )
 
-    pending = auth_users.get_pending_professors()
+    pending = auth_users.get_pending_users()
     if not pending:
         st.success("Nenhuma solicitação pendente no momento.")
         return
 
     st.warning(f"{len(pending)} solicitação(ões) aguardando sua aprovação.")
+    role_labels = {"professor": "Professor", "student": "Aluno"}
     for u in pending:
         with st.container(border=True):
-            st.write(f"**{u.get('name', '—')}**")
-            st.write(f"E-mail: {u.get('email', '—')}")
+            role_label = role_labels.get(u.get("role"), u.get("role", "—"))
+            st.write(f"**{u.get('name', '—')}** — {role_label}")
+            st.write(f"E-mail: {u.get('email') or '— (cadastro por nome)'}")
+            st.caption(f"Via: {u.get('auth_provider', '—')}")
             if u.get("created_at"):
                 st.caption(f"Solicitado em: {u['created_at']}")
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("✅ Aprovar", key=f"approve_{u['id']}", use_container_width=True):
-                    err = auth_users.approve_professor(u["id"])
+                    err = auth_users.approve_user(u["id"])
                     if err:
                         st.error(err)
                     else:
-                        st.success(f"Professor **{u.get('name')}** aprovado.")
+                        st.success(f"Conta de **{u.get('name')}** aprovada.")
                         st.rerun()
             with c2:
                 if st.button("❌ Negar", key=f"reject_{u['id']}", use_container_width=True):
-                    err = auth_users.reject_professor(u["id"])
+                    err = auth_users.reject_user(u["id"])
                     if err:
                         st.error(err)
                     else:
@@ -812,8 +819,8 @@ def render_admin_approvals_tab():
 def render_auth_config_tab():
     st.subheader("Usuários e autenticação")
     st.caption(
-        "Todos entram com Google ou pelo nome (alunos). Você libera professores na aba "
-        "**Aprovações** ou alterando o papel abaixo."
+        "Todos entram com Google ou pelo nome (alunos). Novas contas aguardam aprovação na aba "
+        "**Aprovações**; você também pode alterar o papel abaixo."
     )
 
     user = st.session_state.get("current_user")
@@ -929,7 +936,8 @@ def render_students_tab():
             if err:
                 st.error(err)
             else:
-                st.success(f"Aluno **{new_name.strip()}** cadastrado.")
+                auth_users.ensure_name_student_user(new_name.strip(), auto_approve=True)
+                st.success(f"Aluno **{new_name.strip()}** cadastrado e liberado.")
                 st.rerun()
 
     students = load_students()
@@ -1337,8 +1345,12 @@ def render_professor_panel():
 # ---------------------------
 # Aluno
 # ---------------------------
+def approved_students() -> list:
+    return [s for s in load_students() if auth_users.is_approved_student_name(s["name"])]
+
+
 def render_student_register_sidebar():
-    registered = load_students()
+    registered = approved_students()
     with st.sidebar.expander("📝 Cadastrar-me", expanded=not registered):
         if render_student_register_form("register_in_sidebar"):
             st.rerun()
@@ -1365,11 +1377,14 @@ def render_student_quiz_tab():
         selected_id = playable[0]["id"]
 
     material = get_material(selected_id) if selected_id else None
-    registered = load_students()
+    registered = approved_students()
 
-    if not load_students():
+    if not registered:
         st.subheader("Cadastro de aluno")
-        st.markdown("Faça seu cadastro para participar.")
+        st.markdown(
+            "Faça seu cadastro para participar. O administrador precisa aprovar "
+            "sua conta antes do primeiro acesso."
+        )
         if render_student_register_form("register_main"):
             st.rerun()
         return
@@ -1456,10 +1471,13 @@ def get_playable_active_exams() -> list:
 
 def render_student_exam_tab():
     playable_exams = get_playable_active_exams()
-    registered = load_students()
+    registered = approved_students()
 
-    if not load_students():
-        st.info("Cadastre-se na barra lateral para fazer provas.")
+    if not registered:
+        st.info(
+            "Cadastre-se na barra lateral e aguarde a aprovação do administrador "
+            "para fazer provas."
+        )
         return
 
     if st.session_state.exam_mode == "done" and st.session_state.exam_submission_result:
