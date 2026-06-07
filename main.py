@@ -1,26 +1,38 @@
 from __future__ import annotations
 
+import sys
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
+
+_APP_DIR = Path(__file__).resolve().parent
+if str(_APP_DIR) not in sys.path:
+    sys.path.insert(0, str(_APP_DIR))
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import pdfplumber
 import streamlit as st
 
+try:
+    import auth_users
+except ImportError as exc:
+    st.error(
+        "Não foi possível carregar o módulo `auth_users`. "
+        "Verifique se todos os arquivos `.py` foram enviados ao GitHub."
+    )
+    st.code(str(exc))
+    st.caption(f"Pasta do app: `{_APP_DIR}`")
+    st.stop()
+
+if not hasattr(auth_users, "resolve_unified_google_login"):
+    st.error(
+        "O arquivo `auth_users.py` no servidor está desatualizado. "
+        "No Streamlit Cloud: **Manage app → Reboot** para forçar novo deploy."
+    )
+    st.stop()
+
 import quiz_storage
-from auth_users import (
-    ROLES,
-    approve_professor,
-    ensure_name_student_user,
-    get_pending_professors,
-    get_system_admin_email,
-    is_system_admin,
-    load_users,
-    reject_professor,
-    resolve_unified_google_login,
-    set_user_role,
-)
 from google_auth import (
     clear_oauth_session,
     google_oauth_configured,
@@ -174,7 +186,7 @@ def bootstrap_auth_config():
 
 
 def login_user(user: dict):
-    if is_system_admin(user.get("email")) or user.get("is_admin"):
+    if auth_users.is_system_admin(user.get("email")) or user.get("is_admin"):
         user = {**user, "is_admin": True}
     st.session_state.current_user = user
     st.session_state.role = user.get("role")
@@ -593,7 +605,7 @@ def _register_student_name(name: str) -> tuple[bool, str]:
         st.error(err)
         return False, ""
     clean = " ".join(name.strip().split())
-    ensure_name_student_user(clean)
+    auth_users.ensure_name_student_user(clean)
     st.session_state.preferred_student_name = clean
     return True, clean
 
@@ -611,7 +623,7 @@ def render_student_register_form(form_key: str, button_label: str = "Cadastrar-m
 
 
 def _handle_unified_google(profile: dict):
-    user, err = resolve_unified_google_login(profile)
+    user, err = auth_users.resolve_unified_google_login(profile)
     if err:
         if "aguarda aprovação" in err:
             st.info(err)
@@ -697,7 +709,7 @@ def render_login_signin_panel():
         st.rerun()
 
     st.markdown(
-        f'<p class="login-footnote">O administrador ({get_system_admin_email()}) '
+        f'<p class="login-footnote">O administrador ({auth_users.get_system_admin_email()}) '
         "libera o acesso de professores na aba Aprovações.</p>",
         unsafe_allow_html=True,
     )
@@ -772,9 +784,9 @@ def render_sidebar_logout():
 
 def render_admin_approvals_tab():
     st.subheader("Aprovação de professores")
-    st.caption(f"Administrador do sistema: **{get_system_admin_email()}**")
+    st.caption(f"Administrador do sistema: **{auth_users.get_system_admin_email()}**")
 
-    pending = get_pending_professors()
+    pending = auth_users.get_pending_professors()
     if not pending:
         st.success("Nenhuma solicitação pendente no momento.")
         return
@@ -789,7 +801,7 @@ def render_admin_approvals_tab():
             c1, c2 = st.columns(2)
             with c1:
                 if st.button("✅ Aprovar", key=f"approve_{u['id']}", use_container_width=True):
-                    err = approve_professor(u["id"])
+                    err = auth_users.approve_professor(u["id"])
                     if err:
                         st.error(err)
                     else:
@@ -797,7 +809,7 @@ def render_admin_approvals_tab():
                         st.rerun()
             with c2:
                 if st.button("❌ Negar", key=f"reject_{u['id']}", use_container_width=True):
-                    err = reject_professor(u["id"])
+                    err = auth_users.reject_professor(u["id"])
                     if err:
                         st.error(err)
                     else:
@@ -817,12 +829,12 @@ def render_auth_config_tab():
         st.write(f"**Sessão atual:** {user.get('name')} — `{user.get('role')}`")
         if user.get("email"):
             st.write(f"E-mail: {user['email']}")
-        if user.get("is_admin") or is_system_admin(user.get("email")):
-            st.success(f"Você é o administrador do sistema ({get_system_admin_email()}).")
+        if user.get("is_admin") or auth_users.is_system_admin(user.get("email")):
+            st.success(f"Você é o administrador do sistema ({auth_users.get_system_admin_email()}).")
 
     st.markdown("---")
     st.markdown("#### Usuários cadastrados")
-    users = load_users()
+    users = auth_users.load_users()
     if not users:
         st.info("Nenhum usuário na tabela ainda. Professores entram via Google; alunos ao se cadastrarem.")
     else:
@@ -848,9 +860,9 @@ def render_auth_config_tab():
         }
         if user_options:
             pick = st.selectbox("Usuário", list(user_options.keys()))
-            new_role = st.selectbox("Novo papel", list(ROLES))
+            new_role = st.selectbox("Novo papel", list(auth_users.ROLES))
             if st.button("Salvar papel"):
-                err = set_user_role(user_options[pick], new_role)
+                err = auth_users.set_user_role(user_options[pick], new_role)
                 if err:
                     st.error(err)
                 else:
@@ -1161,7 +1173,7 @@ def render_professor_panel():
     render_sidebar_logout()
 
     current_user = st.session_state.get("current_user") or {}
-    show_admin_tab = is_system_admin(current_user.get("email")) or bool(
+    show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
         current_user.get("is_admin")
     )
     tab_labels = [
