@@ -376,14 +376,6 @@ header[data-testid="stHeader"] {{
     backdrop-filter: blur(8px);
     border-bottom: 1px solid rgba(61, 79, 102, 0.45) !important;
 }}
-.kahoot-login-topbar + [data-testid="stHorizontalBlock"] {{
-    justify-content: flex-end !important;
-    margin-bottom: 0.5rem !important;
-}}
-.kahoot-login-topbar + [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {{
-    width: auto !important;
-    flex: 0 0 auto !important;
-}}
 .stApp {{ background: {LOGIN_DARK} !important; }}
 .main .block-container {{
     padding: 0 !important;
@@ -606,17 +598,14 @@ SESSION_BAR_CSS = f"""
 [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {{
     flex: 0 0 auto !important;
     width: auto !important;
-    min-width: 11rem !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-session-actions-marker) + .element-container [data-testid="stHorizontalBlock"] {{
+    min-width: 5rem !important;
+    display: flex !important;
     justify-content: flex-end !important;
     align-items: center !important;
-    gap: 0.45rem !important;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-session-actions-marker) + .element-container [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-logout-marker) + .element-container .stButton {{
     width: auto !important;
-    flex: 0 0 auto !important;
-    min-width: 0 !important;
+    margin-left: auto !important;
 }}
 .kahoot-session-bar {{
     display: flex;
@@ -683,25 +672,6 @@ SESSION_BAR_CSS = f"""
     background: rgba(99, 132, 168, 0.16);
     color: #6384a8;
     border-color: rgba(74, 98, 120, 0.55);
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-theme-marker) + .element-container [data-testid="stPopover"] > button,
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-theme-marker) + .element-container [data-testid="stPopoverBody"] ~ div button {{
-    background: transparent !important;
-    color: var(--text-color, #c8d6e0) !important;
-    border: 1px solid rgba(128, 128, 128, 0.35) !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 0.78rem !important;
-    padding: 0.35rem 0.65rem !important;
-    min-height: 2rem !important;
-    height: 2rem !important;
-    width: auto !important;
-    min-width: 5.5rem !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-theme-marker) + .element-container [data-testid="stPopover"] > button:hover {{
-    border-color: var(--primary-color, #458588) !important;
-    color: var(--primary-color, #458588) !important;
-    background: rgba(69, 133, 136, 0.1) !important;
 }}
 [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button {{
     background: transparent !important;
@@ -780,44 +750,6 @@ def _session_profile_html(name: str, role_label: str, role_badge_class: str, ema
         f"</div>"
         f"</div>"
     )
-
-
-_THEME_SELECTION_LABELS = ("Sistema", "Claro", "Escuro")
-_THEME_SELECTION_VALUES = ("System", "Light", "Dark")
-
-
-def _apply_streamlit_theme_selection(selection: str) -> None:
-    """Persiste tema claro/escuro/sistema no mecanismo nativo do Streamlit e recarrega."""
-    if selection not in _THEME_SELECTION_VALUES:
-        return
-    components.html(
-        f"""
-        <script>
-        (function () {{
-            const win = window.parent;
-            const path = win.location.pathname;
-            const key = `stActiveTheme-${{path}}-v2`;
-            win.localStorage.setItem(key, JSON.stringify({json.dumps(selection)}));
-            win.location.reload();
-        }})();
-        </script>
-        """,
-        height=0,
-    )
-
-
-def _render_appearance_control(key_prefix: str, *, sidebar: bool = False) -> None:
-    popover = st.sidebar.popover if sidebar else st.popover
-    with popover("Aparência", help="Tema claro, escuro ou automático"):
-        choice = st.radio(
-            "Tema da interface",
-            _THEME_SELECTION_LABELS,
-            key=f"{key_prefix}_theme_choice",
-            horizontal=True,
-        )
-        if st.button("Aplicar tema", key=f"{key_prefix}_theme_apply", use_container_width=True):
-            index = _THEME_SELECTION_LABELS.index(choice)
-            _apply_streamlit_theme_selection(_THEME_SELECTION_VALUES[index])
 
 
 def _apply_login_styles_in_parent():
@@ -1004,12 +936,6 @@ def render_login():
         switch_target = "signup"
 
     st.markdown(f"<style>{LOGIN_PAGE_CSS}</style>", unsafe_allow_html=True)
-    st.markdown('<span class="kahoot-login-topbar"></span>', unsafe_allow_html=True)
-
-    top_left, top_right = st.columns([10, 2], vertical_alignment="center")
-    with top_right:
-        st.markdown('<span class="kahoot-theme-marker"></span>', unsafe_allow_html=True)
-        _render_appearance_control("login")
 
     col_left, col_right = st.columns(2, gap="small")
 
@@ -1049,7 +975,7 @@ def _session_user_display() -> tuple[str, str, str | None]:
 
 
 def render_session_controls():
-    """Barra de sessão com perfil, aparência e logout."""
+    """Barra de sessão com perfil e logout. Tema via menu nativo do Streamlit."""
     name, role_label, email = _session_user_display()
     role_badge_class = (
         "kahoot-session-role"
@@ -1070,27 +996,20 @@ def render_session_controls():
 
     with st.container(border=True):
         st.markdown('<span class="kahoot-session-shell"></span>', unsafe_allow_html=True)
-        profile_col, actions_col = st.columns([7, 3], vertical_alignment="center", gap="medium")
+        profile_col, logout_col = st.columns([9, 1], vertical_alignment="center", gap="medium")
         with profile_col:
             st.markdown(profile_html, unsafe_allow_html=True)
-        with actions_col:
-            st.markdown('<span class="kahoot-session-actions-marker"></span>', unsafe_allow_html=True)
-            theme_col, logout_col = st.columns(2, gap="small")
-            with theme_col:
-                st.markdown('<span class="kahoot-theme-marker"></span>', unsafe_allow_html=True)
-                _render_appearance_control("top")
-            with logout_col:
-                st.markdown('<span class="kahoot-logout-marker"></span>', unsafe_allow_html=True)
-                if st.button("Sair", key="logout_top", use_container_width=True, type="secondary"):
-                    logout()
+        with logout_col:
+            st.markdown('<span class="kahoot-logout-marker"></span>', unsafe_allow_html=True)
+            if st.button("Sair", key="logout_top", use_container_width=False, type="secondary"):
+                logout()
 
     st.sidebar.markdown(
         f'<div class="kahoot-sidebar-account">{profile_html}</div>',
         unsafe_allow_html=True,
     )
-    _render_appearance_control("sidebar", sidebar=True)
     st.sidebar.markdown('<span class="kahoot-sidebar-logout-marker"></span>', unsafe_allow_html=True)
-    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=True, type="secondary"):
+    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=False, type="secondary"):
         logout()
     st.sidebar.divider()
 
