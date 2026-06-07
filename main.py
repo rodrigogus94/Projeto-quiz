@@ -368,8 +368,13 @@ GOOGLE_ICON_SVG = (
 )
 
 LOGIN_PAGE_CSS = f"""
-section[data-testid="stSidebar"], header[data-testid="stHeader"], footer {{
+section[data-testid="stSidebar"], footer {{
     display: none !important;
+}}
+header[data-testid="stHeader"] {{
+    background: rgba(29, 32, 33, 0.85) !important;
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid rgba(61, 79, 102, 0.45) !important;
 }}
 .stApp {{ background: {LOGIN_DARK} !important; }}
 .main .block-container {{
@@ -487,30 +492,6 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], footer {{
     width: 42px !important; height: 42px !important; border: none !important;
     margin: 0 !important; cursor: pointer !important;
 }}
-.kahoot-settings-row + [data-testid="stHorizontalBlock"] {{
-    position: fixed !important; top: 1rem !important; right: 1rem !important;
-    z-index: 60 !important; width: auto !important; gap: 0 !important;
-}}
-.kahoot-settings-row + [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {{
-    width: auto !important; flex: 0 0 auto !important; min-height: unset !important;
-    padding: 0 !important;
-}}
-.kahoot-settings-row + [data-testid="stHorizontalBlock"] .stButton > button {{
-    background: rgba(255, 255, 255, 0.08) !important;
-    color: #c8d6e0 !important;
-    border: 1px solid #3d4f66 !important;
-    border-radius: 999px !important;
-    font-size: 0.85rem !important;
-    min-height: 1.6rem !important;
-    height: 1.6rem !important;
-    width: 1.6rem !important;
-    min-width: 1.6rem !important;
-    padding: 0 !important;
-}}
-.kahoot-settings-row + [data-testid="stHorizontalBlock"] .stButton > button:hover {{
-    background: rgba(255, 255, 255, 0.14) !important;
-    border-color: #458588 !important;
-}}
 .kahoot-form-wrap {{ width: 100%; max-width: 360px; margin: 0 auto; }}
 .kahoot-form-title {{
     color: #c8d6e0; font-size: 1.85rem; font-weight: 700;
@@ -580,159 +561,183 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], footer {{
 """
 
 
+APP_HEADER_CSS = """
+header[data-testid="stHeader"] {
+    background: rgba(29, 32, 33, 0.98) !important;
+    border-bottom: 1px solid #3d4f66 !important;
+}
+header[data-testid="stHeader"] [data-testid="stToolbar"] button {
+    color: #c8d6e0 !important;
+}
+header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover {
+    color: #e8edf2 !important;
+    background: rgba(69, 133, 136, 0.18) !important;
+}
+footer { visibility: hidden; }
+"""
+
 SESSION_BAR_CSS = f"""
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) {{
-    background: {LOGIN_INPUT_BG} !important;
-    border-color: #3d4f66 !important;
-    margin-bottom: 0.75rem !important;
-    padding-top: 0.35rem !important;
-    padding-bottom: 0.35rem !important;
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-bar) {{
+    background: linear-gradient(180deg, {LOGIN_INPUT_BG} 0%, rgba(45, 52, 54, 0.92) 100%) !important;
+    border: 1px solid #3d4f66 !important;
+    border-radius: 12px !important;
+    margin-bottom: 1rem !important;
+    padding: 0.65rem 1rem !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) [data-testid="stHorizontalBlock"] {{
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-bar) [data-testid="stHorizontalBlock"] {{
     align-items: center !important;
+    gap: 1rem !important;
 }}
-.kahoot-session-meta {{ display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }}
+.kahoot-session-bar {{
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 0;
+}}
+.kahoot-session-avatar {{
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #e8edf2;
+    background: linear-gradient(135deg, {LOGIN_TEAL} 0%, #3d7a72 100%);
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}}
+.kahoot-session-info {{
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+}}
+.kahoot-session-line {{
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}}
 .kahoot-session-name {{
-    color: #e8edf2; font-size: 0.92rem; font-weight: 700; line-height: 1.25;
+    color: #e8edf2;
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.2;
 }}
 .kahoot-session-email {{
-    color: #8fa3b5; font-size: 0.78rem; line-height: 1.25;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    color: #8fa3b5;
+    font-size: 0.78rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }}
 .kahoot-session-role {{
-    display: inline-block; width: fit-content; margin-top: 0.1rem;
-    padding: 0.12rem 0.5rem; border-radius: 999px; font-size: 0.65rem;
-    font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
-    background: rgba(69, 133, 136, 0.22); color: #9fd4d0; border: 1px solid #458588;
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: rgba(69, 133, 136, 0.22);
+    color: #9fd4d0;
+    border: 1px solid #458588;
 }}
 .kahoot-session-role--student {{
-    background: rgba(99, 132, 168, 0.2); color: #b8cce0; border-color: #4a6278;
+    background: rgba(99, 132, 168, 0.2);
+    color: #b8cce0;
+    border-color: #4a6278;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {{
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-bar) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {{
     display: flex !important;
     justify-content: flex-end !important;
     align-items: center !important;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .element-container:has(.kahoot-settings-marker) + .element-container .stButton > button {{
-    background: rgba(255, 255, 255, 0.06) !important;
-    color: #c8d6e0 !important;
-    border: 1px solid #3d4f66 !important;
-    border-radius: 999px !important;
-    font-weight: 600 !important;
-    font-size: 0.85rem !important;
-    padding: 0 !important;
-    min-height: 1.6rem !important;
-    height: 1.6rem !important;
-    width: 1.6rem !important;
-    min-width: 1.6rem !important;
-    margin-right: 0.35rem !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .element-container:has(.kahoot-settings-marker) + .element-container .stButton > button:hover {{
-    background: rgba(69, 133, 136, 0.18) !important;
-    border-color: #458588 !important;
-    color: #e8edf2 !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button {{
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-bar) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button {{
     background: transparent !important;
-    color: #f0a8a8 !important;
-    border: 1px solid #c45555 !important;
-    border-radius: 999px !important;
+    color: #e8b4b4 !important;
+    border: 1px solid #8b4545 !important;
+    border-radius: 8px !important;
     font-weight: 600 !important;
-    font-size: 0.75rem !important;
-    padding: 0.15rem 0.65rem !important;
-    min-height: 1.6rem !important;
-    height: 1.6rem !important;
+    font-size: 0.8rem !important;
+    padding: 0.35rem 1rem !important;
+    min-height: 2rem !important;
+    height: 2rem !important;
     width: auto !important;
-    min-width: 3.4rem !important;
+    min-width: 4.5rem !important;
+    transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button:hover {{
-    background: rgba(196, 85, 85, 0.16) !important;
-    border-color: #e57373 !important;
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-bar) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button:hover {{
+    background: rgba(196, 85, 85, 0.14) !important;
+    border-color: #c45555 !important;
     color: #ffcdd2 !important;
 }}
 section[data-testid="stSidebar"] .kahoot-sidebar-account {{
-    padding: 0.25rem 0 0.75rem;
+    padding: 0.5rem 0 0.85rem;
+    border-bottom: 1px solid #3d4f66;
+    margin-bottom: 0.75rem;
 }}
-section[data-testid="stSidebar"] .kahoot-sidebar-account .kahoot-session-name {{
-    color: #e8edf2; font-size: 0.95rem; font-weight: 700;
+section[data-testid="stSidebar"] .kahoot-session-bar {{
+    gap: 0.65rem;
 }}
-section[data-testid="stSidebar"] .kahoot-sidebar-account .kahoot-session-email {{
-    color: #8fa3b5; font-size: 0.78rem; margin-top: 0.15rem;
+section[data-testid="stSidebar"] .kahoot-session-avatar {{
+    width: 2.15rem;
+    height: 2.15rem;
+    font-size: 0.72rem;
 }}
-section[data-testid="stSidebar"] .element-container:has(.kahoot-sidebar-settings-marker) + .element-container .stButton > button {{
-    background: rgba(255, 255, 255, 0.06) !important;
-    color: #c8d6e0 !important;
-    border: 1px solid #3d4f66 !important;
-    border-radius: 999px !important;
-    font-weight: 600 !important;
-    font-size: 0.75rem !important;
-    padding: 0.15rem 0.65rem !important;
-    min-height: 1.6rem !important;
-    height: 1.6rem !important;
-    width: auto !important;
-    min-width: 3.4rem !important;
-    margin-bottom: 0.35rem !important;
-}}
-section[data-testid="stSidebar"] .element-container:has(.kahoot-sidebar-settings-marker) + .element-container .stButton > button:hover {{
-    background: rgba(69, 133, 136, 0.18) !important;
-    border-color: #458588 !important;
-    color: #e8edf2 !important;
+section[data-testid="stSidebar"] .kahoot-session-name {{
+    font-size: 0.88rem;
 }}
 section[data-testid="stSidebar"] .element-container:has(.kahoot-sidebar-logout-marker) + .element-container .stButton > button {{
     background: transparent !important;
-    color: #f0a8a8 !important;
-    border: 1px solid #c45555 !important;
-    border-radius: 999px !important;
+    color: #e8b4b4 !important;
+    border: 1px solid #8b4545 !important;
+    border-radius: 8px !important;
     font-weight: 600 !important;
-    font-size: 0.75rem !important;
-    padding: 0.15rem 0.65rem !important;
-    min-height: 1.6rem !important;
-    height: 1.6rem !important;
+    font-size: 0.78rem !important;
+    padding: 0.3rem 0.85rem !important;
+    min-height: 1.85rem !important;
+    height: 1.85rem !important;
     width: auto !important;
-    min-width: 3.4rem !important;
+    margin-bottom: 0.5rem !important;
 }}
 section[data-testid="stSidebar"] .element-container:has(.kahoot-sidebar-logout-marker) + .element-container .stButton > button:hover {{
-    background: rgba(196, 85, 85, 0.16) !important;
-    border-color: #e57373 !important;
+    background: rgba(196, 85, 85, 0.14) !important;
+    border-color: #c45555 !important;
     color: #ffcdd2 !important;
 }}
 """
 
 
-def _open_streamlit_settings_menu():
-    """Abre o diálogo nativo de configurações do Streamlit (tema, etc.)."""
-    components.html(
-        """
-        <script>
-        (function () {
-            const doc = window.parent.document;
-            const toolbar = doc.querySelector('[data-testid="stToolbar"]');
-            if (toolbar) {
-                const buttons = toolbar.querySelectorAll("button");
-                for (const btn of buttons) {
-                    const label = (btn.getAttribute("aria-label") || btn.getAttribute("title") || "").toLowerCase();
-                    if (label.includes("setting") || label.includes("configura")) {
-                        btn.click();
-                        return;
-                    }
-                }
-                if (buttons.length) {
-                    buttons[buttons.length - 1].click();
-                }
-            }
-        })();
-        </script>
-        """,
-        height=0,
+def _user_initials(name: str) -> str:
+    parts = [p for p in name.strip().split() if p]
+    if len(parts) >= 2:
+        return f"{parts[0][0]}{parts[-1][0]}".upper()
+    if parts:
+        return parts[0][:2].upper()
+    return "?"
+
+
+def _session_profile_html(name: str, role_label: str, role_badge_class: str, email_html: str) -> str:
+    return (
+        f'<div class="kahoot-session-bar">'
+        f'<div class="kahoot-session-avatar">{_user_initials(name)}</div>'
+        f'<div class="kahoot-session-info">'
+        f'<div class="kahoot-session-line">'
+        f'<span class="kahoot-session-name">{name}</span>'
+        f'<span class="{role_badge_class}">{role_label}</span>'
+        f"</div>"
+        f"{email_html}"
+        f"</div>"
+        f"</div>"
     )
-
-
-def _render_settings_button(key: str, *, sidebar: bool = False):
-    label = "⚙"
-    help_text = "Configurações do Streamlit"
-    button = st.sidebar.button if sidebar else st.button
-    if button(label, key=key, help=help_text, use_container_width=False, type="secondary"):
-        _open_streamlit_settings_menu()
 
 
 def _apply_login_styles_in_parent():
@@ -919,10 +924,6 @@ def render_login():
         switch_target = "signup"
 
     st.markdown(f"<style>{LOGIN_PAGE_CSS}</style>", unsafe_allow_html=True)
-    st.markdown('<span class="kahoot-settings-row"></span>', unsafe_allow_html=True)
-    _, settings_col = st.columns([11, 1])
-    with settings_col:
-        _render_settings_button("login_settings")
 
     col_left, col_right = st.columns(2, gap="small")
 
@@ -962,14 +963,15 @@ def _session_user_display() -> tuple[str, str, str | None]:
 
 
 def render_session_controls():
-    """Barra de sessão + logout visível para professor, aluno e visitante."""
+    """Barra de sessão + logout. Configurações de tela via menu nativo do Streamlit (canto superior direito)."""
     name, role_label, email = _session_user_display()
-    if role_label == "Professor":
-        role_badge_class = "kahoot-session-role"
-    else:
-        role_badge_class = "kahoot-session-role kahoot-session-role--student"
+    role_badge_class = (
+        "kahoot-session-role"
+        if role_label == "Professor"
+        else "kahoot-session-role kahoot-session-role--student"
+    )
 
-    st.markdown(f"<style>{SESSION_BAR_CSS}</style>", unsafe_allow_html=True)
+    st.markdown(f"<style>{APP_HEADER_CSS}{SESSION_BAR_CSS}</style>", unsafe_allow_html=True)
 
     if email:
         email_html = f'<div class="kahoot-session-email">{email}</div>'
@@ -978,35 +980,21 @@ def render_session_controls():
     else:
         email_html = ""
 
+    profile_html = _session_profile_html(name, role_label, role_badge_class, email_html)
+
     with st.container(border=True):
-        meta_col, btn_col = st.columns([9, 1], gap="small")
-        with meta_col:
-            st.markdown(
-                f'<div class="kahoot-session-meta">'
-                f'<div class="kahoot-session-name">{name}</div>'
-                f"{email_html}"
-                f'<span class="{role_badge_class}">{role_label}</span>'
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-        with btn_col:
-            st.markdown('<span class="kahoot-settings-marker"></span>', unsafe_allow_html=True)
-            _render_settings_button("settings_top")
+        profile_col, action_col = st.columns([8, 2], vertical_alignment="center", gap="medium")
+        with profile_col:
+            st.markdown(profile_html, unsafe_allow_html=True)
+        with action_col:
             st.markdown('<span class="kahoot-logout-marker"></span>', unsafe_allow_html=True)
             if st.button("Sair", key="logout_top", use_container_width=False, type="secondary"):
                 logout()
 
-    sidebar_email = f'<div class="kahoot-session-email">{email}</div>' if email else ""
     st.sidebar.markdown(
-        f'<div class="kahoot-sidebar-account">'
-        f'<div class="kahoot-session-name">{name}</div>'
-        f"{sidebar_email}"
-        f'<span class="{role_badge_class}">{role_label}</span>'
-        f"</div>",
+        f'<div class="kahoot-sidebar-account">{profile_html}</div>',
         unsafe_allow_html=True,
     )
-    st.sidebar.markdown('<span class="kahoot-sidebar-settings-marker"></span>', unsafe_allow_html=True)
-    _render_settings_button("settings_sidebar", sidebar=True)
     st.sidebar.markdown('<span class="kahoot-sidebar-logout-marker"></span>', unsafe_allow_html=True)
     if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=False, type="secondary"):
         logout()
