@@ -206,6 +206,10 @@ def render_login_signin_panel():
     )
 
 
+def _set_auth_view(target: str) -> None:
+    st.session_state.auth_view = target
+
+
 def render_login():
     logout_message = st.session_state.pop("logout_message", None)
 
@@ -225,7 +229,7 @@ def render_login():
         switch_key = "go_signup"
         switch_target = "signup"
 
-    ui_theme.inject_app_chrome()
+    ui_theme.inject_app_chrome(hide_toolbar=True)
     ui_theme.inject_login_page_css()
 
     if logout_message:
@@ -239,14 +243,22 @@ def render_login():
     with col_left:
         st.markdown('<span class="kahoot-login-marker"></span>', unsafe_allow_html=True)
         st.markdown(
+            f'<div class="kahoot-left-panel">'
             f'<div class="kahoot-left-inner">'
             f"<h2>{left_title}</h2>"
-            f"<p>{left_desc}</p></div>",
+            f"<p>{left_desc}</p>"
+            f"</div></div>",
             unsafe_allow_html=True,
         )
-        if st.button(switch_label, key=switch_key, use_container_width=False):
-            st.session_state.auth_view = switch_target
-            st.rerun()
+        st.markdown('<span class="kahoot-login-switch-marker"></span>', unsafe_allow_html=True)
+        st.button(
+            switch_label,
+            key=switch_key,
+            use_container_width=True,
+            type="primary",
+            on_click=_set_auth_view,
+            args=(switch_target,),
+        )
 
     with col_right:
         st.markdown('<span class="kahoot-login-form-marker" style="display:none"></span>', unsafe_allow_html=True)
@@ -256,6 +268,7 @@ def render_login():
             render_login_signin_panel()
 
     ui_theme.inject_login_layout_script()
+    ui_theme.inject_login_switch_button_css()
 
 
 def _session_user_display() -> tuple[str, str, str | None]:

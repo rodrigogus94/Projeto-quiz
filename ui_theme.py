@@ -870,6 +870,12 @@ def inject_theme_css() -> None:
                     }});
                 }});
             }}
+            function isLoginSwitchButton(btn) {{
+                const col = document.querySelector(
+                    '[data-testid="stColumn"]:has(.kahoot-login-switch-marker)'
+                );
+                return Boolean(col && col.contains(btn));
+            }}
             function paintThemedWidgets() {{
                 const bg = readThemeVar("--background-color");
                 const text = readThemeVar("--text-color");
@@ -881,6 +887,9 @@ def inject_theme_css() -> None:
                 document.querySelectorAll(
                     '[data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryBorderless"]'
                 ).forEach((btn) => {{
+                    if (isLoginSwitchButton(btn)) {{
+                        return;
+                    }}
                     btn.style.setProperty("background-color", secondary, "important");
                     btn.style.setProperty("color", text, "important");
                     btn.style.setProperty("border-color", border, "important");
@@ -889,6 +898,9 @@ def inject_theme_css() -> None:
                     }});
                 }});
                 document.querySelectorAll('[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"]').forEach((btn) => {{
+                    if (isLoginSwitchButton(btn)) {{
+                        return;
+                    }}
                     btn.style.setProperty("background-color", primary, "important");
                     btn.style.setProperty("color", "#ffffff", "important");
                     btn.querySelectorAll("p, span, div").forEach((node) => {{
@@ -914,6 +926,28 @@ def inject_theme_css() -> None:
                         node.style.setProperty("background-color", bg, "important");
                     }});
                 }});
+                const switchCol = document.querySelector(
+                    '[data-testid="stColumn"]:has(.kahoot-login-switch-marker)'
+                );
+                if (switchCol) {{
+                        switchCol.querySelectorAll(
+                            'button, [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryBorderless"]'
+                        ).forEach((btn) => {{
+                            btn.style.setProperty("background", "transparent", "important");
+                            btn.style.setProperty("background-color", "transparent", "important");
+                            btn.style.setProperty("color", "#ffffff", "important");
+                            btn.style.setProperty("border", "2px solid #ffffff", "important");
+                            btn.style.setProperty("border-radius", "25px", "important");
+                            btn.style.setProperty("padding", "0.75rem 1.5rem", "important");
+                            btn.style.setProperty("min-height", "2.75rem", "important");
+                            btn.style.setProperty("width", "100%", "important");
+                            btn.style.setProperty("letter-spacing", "0.08em", "important");
+                            btn.style.setProperty("font-weight", "600", "important");
+                            btn.querySelectorAll("p, span, div").forEach((node) => {{
+                                node.style.setProperty("color", "#ffffff", "important");
+                            }});
+                        }});
+                }}
             }}
             function repaintAll() {{
                 paintSidebarChromeButtons();
@@ -973,13 +1007,33 @@ def login_page_css() -> str:
 .stApp:has(.kahoot-login-marker) footer {{
     display: none !important;
 }}
-.stApp:has(.kahoot-login-marker) header[data-testid="stHeader"] {{
+.stApp:has(.kahoot-login-marker) header[data-testid="stHeader"],
+.kahoot-on-login header[data-testid="stHeader"] {{
     display: none !important;
     height: 0 !important;
     min-height: 0 !important;
     visibility: hidden !important;
+    overflow: hidden !important;
+    pointer-events: none !important;
 }}
-.stApp:has(.kahoot-login-marker) [data-testid="stDecoration"] {{
+.stApp:has(.kahoot-login-marker) [data-testid="stToolbar"],
+.stApp:has(.kahoot-login-marker) [data-testid="stHeaderActionElements"],
+.stApp:has(.kahoot-login-marker) [data-testid="stStatusWidget"],
+.stApp:has(.kahoot-login-marker) [data-testid="stMainMenu"],
+.kahoot-on-login [data-testid="stToolbar"],
+.kahoot-on-login [data-testid="stHeaderActionElements"],
+.kahoot-on-login [data-testid="stStatusWidget"],
+.kahoot-on-login [data-testid="stMainMenu"] {{
+    display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stDecoration"],
+.kahoot-on-login [data-testid="stDecoration"] {{
     display: none !important;
 }}
 .stApp:has(.kahoot-login-marker) .main {{
@@ -990,8 +1044,34 @@ def login_page_css() -> str:
     max-width: 100% !important;
     margin: 0 !important;
 }}
-.stApp:has(.kahoot-login-marker) [data-testid="stSegmentedControl"] {{
+.stApp:has(.kahoot-login-marker) [data-testid="stSegmentedControl"],
+.stApp:has(.kahoot-login-marker) [data-testid="stSegmentedControl"] *,
+.stApp:has(.kahoot-login-marker) .kahoot-theme-icons,
+.stApp:has(.kahoot-login-marker) .kahoot-menu-section-title,
+.stApp:has(.kahoot-login-marker) .element-container:has([data-testid="stSegmentedControl"]):not(:has(.kahoot-left-panel)),
+.stApp:has(.kahoot-login-marker) .element-container:has(.kahoot-theme-icons):not(:has(.kahoot-left-panel)),
+.stApp:has(.kahoot-login-marker) section[data-testid="stSidebar"] [data-testid="stSegmentedControl"],
+.stApp:has(.kahoot-login-marker) [data-testid="stPopoverBody"] [data-testid="stSegmentedControl"],
+.kahoot-on-login [data-testid="stSegmentedControl"],
+.kahoot-on-login [data-testid="stSegmentedControl"] *,
+.kahoot-on-login .kahoot-theme-icons,
+.kahoot-on-login .kahoot-menu-section-title,
+.kahoot-on-login .element-container:has([data-testid="stSegmentedControl"]):not(:has(.kahoot-left-panel)),
+.kahoot-on-login .element-container:has(.kahoot-theme-icons):not(:has(.kahoot-left-panel)),
+.kahoot-on-login section[data-testid="stSidebar"] [data-testid="stSegmentedControl"],
+.kahoot-on-login [data-testid="stPopoverBody"] [data-testid="stSegmentedControl"] {{
     display: none !important;
+    visibility: hidden !important;
+    height: 0 !important;
+    max-height: 0 !important;
+    overflow: hidden !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    position: absolute !important;
+    left: -9999px !important;
+    top: -9999px !important;
 }}
 .kahoot-login-marker,
 .kahoot-login-form-marker {{
@@ -1045,6 +1125,9 @@ def login_page_css() -> str:
     flex: 0 0 50% !important;
     width: 50% !important;
     max-width: 50% !important;
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }}
 {row} > [data-testid="stColumn"]:last-child,
 .kahoot-login-row > [data-testid="stColumn"]:last-child {{
@@ -1067,34 +1150,38 @@ def login_page_css() -> str:
 .kahoot-login-row > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{
     max-width: 360px;
 }}
-.kahoot-left-inner {{ text-align: center; max-width: 320px; }}
-.kahoot-left-inner h2 {{
-    color: #ffffff; font-size: 2.4rem; font-weight: 700;
+.kahoot-left-panel {{
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    width: 100% !important;
+    max-width: 360px !important;
+    margin: 0 auto !important;
+    pointer-events: auto !important;
+}}
+.kahoot-left-inner {{ text-align: center; max-width: 360px; width: 100%; margin: 0 auto; }}
+.kahoot-left-inner h2,
+{row} > [data-testid="stColumn"]:first-child .kahoot-left-inner h2,
+.kahoot-login-row > [data-testid="stColumn"]:first-child .kahoot-left-inner h2,
+{row} > [data-testid="stColumn"]:first-child [data-testid="stMarkdownContainer"] h2,
+.kahoot-login-row > [data-testid="stColumn"]:first-child [data-testid="stMarkdownContainer"] h2 {{
+    color: #ffffff !important;
+    font-size: 2.4rem; font-weight: 700;
     margin: 0 0 1rem; line-height: 1.2;
     font-family: "Segoe UI", system-ui, sans-serif;
+    display: block !important;
+    visibility: visible !important;
 }}
-.kahoot-left-inner p {{
-    color: rgba(255,255,255,0.95); font-size: 0.95rem; line-height: 1.7;
+.kahoot-left-inner p,
+{row} > [data-testid="stColumn"]:first-child .kahoot-left-inner p,
+.kahoot-login-row > [data-testid="stColumn"]:first-child .kahoot-left-inner p,
+{row} > [data-testid="stColumn"]:first-child [data-testid="stMarkdownContainer"] p,
+.kahoot-login-row > [data-testid="stColumn"]:first-child [data-testid="stMarkdownContainer"] p {{
+    color: rgba(255,255,255,0.95) !important;
+    font-size: 0.95rem; line-height: 1.7;
     margin: 0 0 2rem; font-family: "Segoe UI", system-ui, sans-serif;
-}}
-{row} > [data-testid="stColumn"]:first-child .stButton,
-.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton {{
-    width: 100%; display: flex; justify-content: center;
-}}
-{row} > [data-testid="stColumn"]:first-child .stButton > button,
-.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button {{
-    background: transparent !important;
-    color: #ffffff !important;
-    border: 2px solid #ffffff !important;
-    border-radius: 25px !important;
-    font-weight: 600 !important;
-    padding: 0.7rem 2.8rem !important;
-    letter-spacing: 0.08em !important;
-    min-width: 200px !important;
-}}
-{row} > [data-testid="stColumn"]:first-child .stButton > button:hover,
-.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button:hover {{
-    background: rgba(255,255,255,0.12) !important;
+    display: block !important;
+    visibility: visible !important;
 }}
 {row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual),
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) {{
@@ -1190,6 +1277,9 @@ def login_page_css() -> str:
     font-weight: 600 !important;
     letter-spacing: 0.08em !important;
     padding: 0.75rem 1.5rem !important;
+    width: 100% !important;
+    min-height: 2.75rem !important;
+    box-sizing: border-box !important;
 }}
 {row} > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button:hover,
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button:hover {{
@@ -1251,12 +1341,91 @@ def login_page_css() -> str:
     .kahoot-form-title {{
         font-size: 1.5rem !important;
     }}
-    .stApp:has(.kahoot-login-marker) .kahoot-login-toast {{
+    .stApp:has(.kahoot-login-marker) .kahoot-login-toast,
+    .kahoot-on-login .kahoot-login-toast {{
         position: relative;
         top: auto;
         left: auto;
         transform: none;
         margin: 0.75rem auto;
+    }}
+    .stApp:has(.kahoot-login-marker) [data-testid="stSegmentedControl"],
+    .stApp:has(.kahoot-login-marker) .kahoot-theme-icons,
+    .kahoot-on-login [data-testid="stSegmentedControl"],
+    .kahoot-on-login .kahoot-theme-icons,
+    .kahoot-on-login [data-testid="stToolbar"],
+    .kahoot-on-login [data-testid="stHeaderActionElements"] {{
+        display: none !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }}
+}}
+"""
+
+
+def login_switch_button_css() -> str:
+    """CSS do botão ENTRAR/CADASTRAR-SE — injetado após o widget para garantir prioridade."""
+    switch_btn = (
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) button, "
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-primary'], "
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-primaryFormSubmit'], "
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-secondary'], "
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-secondaryBorderless']"
+    )
+    switch_wrap = (
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) .stButton, "
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stButton']"
+    )
+    return f"""
+.kahoot-login-switch-marker {{
+    display: none !important;
+}}
+{switch_wrap} {{
+    width: 100% !important;
+    max-width: 360px !important;
+    margin: 0 auto !important;
+}}
+{switch_btn} {{
+    background: transparent !important;
+    background-color: transparent !important;
+    color: #ffffff !important;
+    border: 2px solid #ffffff !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    padding: 0.75rem 1.5rem !important;
+    width: 100% !important;
+    min-height: 2.75rem !important;
+    height: auto !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+}}
+.stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) [data-testid^="stBaseButton"] p,
+.stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) [data-testid^="stBaseButton"] span,
+.stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) button p {{
+    color: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 1.2 !important;
+}}
+.stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) button:hover,
+.stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) [data-testid^="stBaseButton"]:hover {{
+    background: rgba(255,255,255,0.12) !important;
+    background-color: rgba(255,255,255,0.12) !important;
+    color: #ffffff !important;
+    border-color: #ffffff !important;
+}}
+@media (max-width: 768px) {{
+    {switch_btn} {{
+        padding: 0.75rem 1.5rem !important;
+        min-height: 2.75rem !important;
     }}
 }}
 """
@@ -1540,20 +1709,117 @@ def inject_login_page_css() -> None:
     st.markdown(f"<style>{login_page_css()}</style>", unsafe_allow_html=True)
 
 
+def inject_login_switch_button_css() -> None:
+    st.markdown(
+        f"<style id='kahoot-login-switch-btn-css'>{login_switch_button_css()}</style>",
+        unsafe_allow_html=True,
+    )
+
+
 def inject_login_layout_script() -> None:
     st.html(
         """
         <script>
         (function () {
+            const THEME_SELECTORS = [
+                '[data-testid="stSegmentedControl"]',
+                '.kahoot-theme-icons',
+                '.kahoot-menu-section-title',
+                '[data-testid="stToolbar"]',
+                '[data-testid="stHeaderActionElements"]',
+                '[data-testid="stStatusWidget"]',
+                '[data-testid="stMainMenu"]',
+            ];
+
+            function isLoginPage() {
+                return Boolean(document.querySelector(".kahoot-login-marker"));
+            }
+
+            function markLoginPage() {
+                if (!isLoginPage()) return;
+                document.body.classList.add("kahoot-on-login");
+                document.documentElement.classList.add("kahoot-on-login");
+            }
+
+            function isProtectedLoginContent(node) {
+                return Boolean(
+                    node && node.closest(
+                        ".kahoot-left-panel, .kahoot-left-inner, .kahoot-login-marker"
+                    )
+                );
+            }
+
+            function paintLoginSwitchButton() {
+                const col = document.querySelector(
+                    '[data-testid="stColumn"]:has(.kahoot-login-switch-marker)'
+                );
+                if (!col) return;
+                col.querySelectorAll(
+                    'button, [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryBorderless"]'
+                ).forEach((btn) => {
+                    btn.style.setProperty("background", "transparent", "important");
+                    btn.style.setProperty("background-color", "transparent", "important");
+                    btn.style.setProperty("color", "#ffffff", "important");
+                    btn.style.setProperty("border", "2px solid #ffffff", "important");
+                    btn.style.setProperty("border-radius", "25px", "important");
+                    btn.style.setProperty("padding", "0.75rem 1.5rem", "important");
+                    btn.style.setProperty("min-height", "2.75rem", "important");
+                    btn.style.setProperty("height", "auto", "important");
+                    btn.style.setProperty("width", "100%", "important");
+                    btn.style.setProperty("letter-spacing", "0.08em", "important");
+                    btn.style.setProperty("font-weight", "600", "important");
+                    btn.querySelectorAll("p, span, div").forEach((node) => {
+                        node.style.setProperty("color", "#ffffff", "important");
+                        node.style.setProperty("margin", "0", "important");
+                        node.style.setProperty("padding", "0", "important");
+                    });
+                });
+            }
+
+            function hideThemeControlsOnLogin() {
+                if (!isLoginPage()) return;
+                THEME_SELECTORS.forEach((selector) => {
+                    document.querySelectorAll(selector).forEach((el) => {
+                        if (isProtectedLoginContent(el)) return;
+                        const block = el.closest(".element-container") || el;
+                        if (isProtectedLoginContent(block)) return;
+                        block.style.setProperty("display", "none", "important");
+                        block.style.setProperty("visibility", "hidden", "important");
+                        block.style.setProperty("height", "0", "important");
+                        block.style.setProperty("max-height", "0", "important");
+                        block.style.setProperty("overflow", "hidden", "important");
+                        block.style.setProperty("opacity", "0", "important");
+                        block.style.setProperty("pointer-events", "none", "important");
+                    });
+                });
+            }
+
             function applyLoginLayout() {
+                markLoginPage();
                 document.querySelectorAll(".kahoot-login-marker").forEach((marker) => {
                     const row = marker.closest('[data-testid="stHorizontalBlock"]');
                     if (row) row.classList.add("kahoot-login-row");
                 });
+                hideThemeControlsOnLogin();
+                paintLoginSwitchButton();
             }
+
             applyLoginLayout();
             setTimeout(applyLoginLayout, 50);
             setTimeout(applyLoginLayout, 300);
+            setTimeout(applyLoginLayout, 800);
+            setTimeout(hideThemeControlsOnLogin, 800);
+            window.addEventListener("resize", hideThemeControlsOnLogin);
+
+            const observer = new MutationObserver(() => {
+                if (!isLoginPage()) {
+                    observer.disconnect();
+                    return;
+                }
+                hideThemeControlsOnLogin();
+                paintLoginSwitchButton();
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
         })();
         </script>
         """,
@@ -1568,6 +1834,8 @@ def clear_login_page_styles() -> None:
         (function () {
             const style = document.getElementById("kahoot-login-style");
             if (style) style.remove();
+            document.body.classList.remove("kahoot-on-login");
+            document.documentElement.classList.remove("kahoot-on-login");
             document.querySelectorAll(".kahoot-login-row").forEach((row) => {
                 row.classList.remove("kahoot-login-row");
             });
@@ -1588,6 +1856,8 @@ def render_theme_selector(
     compact: bool = False,
     icon_only: bool = False,
 ) -> None:
+    if st.session_state.get("role") is None:
+        return
     if not icon_only:
         st.markdown(
             '<div class="kahoot-menu-section-title">Aparência</div>',
