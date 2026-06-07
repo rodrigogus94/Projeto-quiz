@@ -206,6 +206,7 @@ def init_session_state():
         "selected_exam_id": None,
         "exam_mode": "select",
         "exam_submission_result": None,
+        "auth_view": "signup",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -333,88 +334,279 @@ def plot_question_performance(leaderboard, total_questions):
 # ---------------------------
 # Login
 # ---------------------------
+LOGIN_ACCENT = "#6C63FF"
+LOGIN_ACCENT_DARK = "#5B54E8"
+
+
+def inject_login_page_css():
+    st.markdown(
+        f"""
+        <style>
+        section[data-testid="stSidebar"] {{ display: none; }}
+        header[data-testid="stHeader"] {{ background: transparent; }}
+        .block-container {{
+            padding-top: 2rem;
+            max-width: 960px;
+        }}
+        .login-brand {{
+            text-align: center;
+            margin-bottom: 1.25rem;
+        }}
+        .login-brand h1 {{
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin: 0;
+            color: inherit;
+        }}
+        .login-brand p {{
+            margin: 0.35rem 0 0;
+            opacity: 0.75;
+            font-size: 0.95rem;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) {{
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
+            min-height: 500px;
+            align-items: stretch !important;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:first-child {{
+            background: linear-gradient(145deg, {LOGIN_ACCENT} 0%, {LOGIN_ACCENT_DARK} 100%);
+            padding: 3rem 2rem !important;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:last-child {{
+            background: #ffffff;
+            padding: 2.5rem 2.5rem 2rem !important;
+            color: #1f2937;
+        }}
+        .login-accent-title {{
+            color: #ffffff;
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0 0 0.75rem;
+            line-height: 1.2;
+        }}
+        .login-accent-text {{
+            color: rgba(255, 255, 255, 0.92);
+            font-size: 0.95rem;
+            line-height: 1.55;
+            margin: 0 0 2rem;
+            max-width: 260px;
+        }}
+        .login-form-title {{
+            color: {LOGIN_ACCENT};
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0 0 1.25rem;
+            text-align: center;
+        }}
+        .login-form-hint {{
+            color: #6b7280;
+            font-size: 0.85rem;
+            text-align: center;
+            margin: 0 0 1.25rem;
+        }}
+        .login-social-row {{
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }}
+        .login-social-icon {{
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #6b7280;
+            font-size: 0.72rem;
+            font-weight: 600;
+            background: #f9fafb;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stButton > button[kind="primary"] {{
+            background: {LOGIN_ACCENT};
+            border: none;
+            border-radius: 999px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            padding: 0.65rem 2rem;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stButton > button[kind="primary"]:hover {{
+            background: {LOGIN_ACCENT_DARK};
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:first-child .stButton > button {{
+            background: transparent;
+            color: #ffffff;
+            border: 2px solid #ffffff;
+            border-radius: 999px;
+            font-weight: 700;
+            letter-spacing: 0.06em;
+            padding: 0.6rem 2.5rem;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:first-child .stButton > button:hover {{
+            background: rgba(255, 255, 255, 0.12);
+            color: #ffffff;
+            border-color: #ffffff;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) label {{
+            color: #374151 !important;
+            font-size: 0.85rem;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) input {{
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+            background: #f3f4f6;
+        }}
+        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stTextInput > div > div {{
+            background: #f3f4f6;
+            border-radius: 8px;
+        }}
+        .login-divider {{
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.8rem;
+            margin: 0.75rem 0;
+        }}
+        .login-professor-box {{
+            margin-top: 1.5rem;
+            padding-top: 1.25rem;
+            border-top: 1px solid #e5e7eb;
+        }}
+        .login-professor-box p {{
+            color: #6b7280;
+            font-size: 0.85rem;
+            text-align: center;
+            margin: 0 0 0.75rem;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _register_student_name(name: str) -> tuple[bool, str]:
+    _, err = add_student(name)
+    if err:
+        st.error(err)
+        return False, ""
+    clean = " ".join(name.strip().split())
+    ensure_name_student_user(clean)
+    st.session_state.preferred_student_name = clean
+    return True, clean
+
+
 def render_student_register_form(form_key: str, button_label: str = "Cadastrar-me") -> bool:
-    """Formulário de auto-cadastro. Retorna True se cadastrou com sucesso."""
     with st.form(form_key):
         name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
         submitted = st.form_submit_button(button_label, use_container_width=True)
         if submitted:
-            _, err = add_student(name)
-            if err:
-                st.error(err)
-            else:
-                clean = " ".join(name.strip().split())
-                ensure_name_student_user(clean)
-                st.session_state.preferred_student_name = clean
+            ok, clean = _register_student_name(name)
+            if ok:
                 st.success(f"Cadastro realizado! Bem-vindo(a), **{clean}**.")
                 return True
     return False
 
 
-def render_student_login_section():
-    st.subheader("👨‍🎓 Área do Aluno")
-    tab_entrar, tab_cadastro = st.tabs(["Entrar", "Cadastrar-me"])
-
-    with tab_entrar:
-        st.markdown("Responda quizzes e provas ativos.")
-        if google_oauth_configured():
-            profile = render_google_login_button(
-                "Entrar com Google",
-                key="google_login",
-                role_hint="student",
-            )
-            if profile:
-                user = resolve_student_google_login(profile)
-                login_user(user)
-                st.rerun()
-            st.caption("ou")
-        if st.button("Entrar como aluno (sem Google)", use_container_width=True):
-            st.session_state.role = "student"
-            st.session_state.current_user = None
-            st.rerun()
-
-    with tab_cadastro:
-        st.markdown("Primeiro acesso? Crie seu cadastro para fazer o quiz.")
-        if render_student_register_form("register_on_login"):
-            st.session_state.role = "student"
-            st.session_state.current_user = None
-            st.rerun()
+def _handle_student_google(profile: dict):
+    user = resolve_student_google_login(profile)
+    login_user(user)
+    st.rerun()
 
 
-def render_professor_login_section():
-    st.subheader("👨‍🏫 Área do Professor")
+def _handle_professor_google(profile: dict):
+    user, err = resolve_professor_login(profile)
+    if err:
+        if err.startswith("Solicitação enviada"):
+            st.info(err)
+        else:
+            st.error(err)
+    else:
+        login_user(user)
+        st.rerun()
+
+
+def render_login_signup_panel():
+    st.markdown(
+        '<p class="login-form-title">Criar conta</p>'
+        '<div class="login-social-row">'
+        '<span class="login-social-icon">G</span>'
+        "</div>"
+        '<p class="login-form-hint">ou cadastre-se com seu nome:</p>',
+        unsafe_allow_html=True,
+    )
+
     if google_oauth_configured():
-        st.markdown("Login seguro com sua conta Google.")
-        st.caption(
-            "Novos professores precisam de aprovação do administrador do sistema "
-            f"({get_system_admin_email()}) antes de acessar o painel."
+        profile = render_google_login_button(
+            "Continuar com Google",
+            key="oauth_student_signup",
+            role_hint="student",
         )
+        if profile:
+            _handle_student_google(profile)
+        st.markdown('<p class="login-divider">ou</p>', unsafe_allow_html=True)
+
+    with st.form("register_on_login"):
+        name = st.text_input("Nome", placeholder="Ex.: Maria Silva", label_visibility="collapsed")
+        submitted = st.form_submit_button("CADASTRAR-SE", use_container_width=True, type="primary")
+        if submitted:
+            ok, _ = _register_student_name(name)
+            if ok:
+                st.session_state.role = "student"
+                st.session_state.current_user = None
+                st.rerun()
+
+
+def render_login_signin_panel():
+    st.markdown('<p class="login-form-title">Entrar</p>', unsafe_allow_html=True)
+
+    st.markdown("**👨‍🎓 Aluno**")
+    if google_oauth_configured():
         profile = render_google_login_button(
             "Entrar com Google",
-            key="google_login",
+            key="oauth_student_signin",
+            role_hint="student",
+        )
+        if profile:
+            _handle_student_google(profile)
+        st.markdown('<p class="login-divider">ou</p>', unsafe_allow_html=True)
+
+    if st.button("Entrar como aluno (sem Google)", use_container_width=True, key="student_no_google"):
+        st.session_state.role = "student"
+        st.session_state.current_user = None
+        st.rerun()
+
+    st.markdown(
+        '<div class="login-professor-box">'
+        "<p><strong>👨‍🏫 Professor</strong> — login com Google</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+    if google_oauth_configured():
+        st.caption(
+            f"Novos professores precisam de aprovação do administrador ({get_system_admin_email()})."
+        )
+        profile = render_google_login_button(
+            "Entrar como professor",
+            key="oauth_professor_signin",
             role_hint="professor",
         )
         if profile:
-            user, err = resolve_professor_login(profile)
-            if err:
-                if err.startswith("Solicitação enviada"):
-                    st.info(err)
-                else:
-                    st.error(err)
-            else:
-                login_user(user)
-                st.rerun()
+            _handle_professor_google(profile)
     else:
         render_oauth_setup_help()
         if legacy_password_enabled():
-            with st.expander("Login legado (somente desenvolvimento)"):
-                st.caption("Padrão local: usuário `professor` / senha `professor123`")
+            with st.expander("Login legado (desenvolvimento)"):
                 with st.form("professor_login"):
                     username = st.text_input("Usuário")
                     password = st.text_input("Senha", type="password")
-                    submitted = st.form_submit_button(
-                        "Entrar como professor (legado)", use_container_width=True
-                    )
+                    submitted = st.form_submit_button("Entrar (legado)", use_container_width=True)
                     if submitted:
                         if verify_professor(username, password):
                             login_user(
@@ -429,27 +621,49 @@ def render_professor_login_section():
                             st.rerun()
                         else:
                             st.error("Usuário ou senha incorretos.")
-        else:
-            st.error("Login de professor indisponível até configurar o Google OAuth.")
 
 
 def render_login():
-    st.title("🎮 Quiz Interativo")
+    inject_login_page_css()
+    view = st.session_state.auth_view
+
     st.markdown(
-        "Um único cadastro de usuários com **papel (role)** define se você é professor ou aluno."
+        '<div class="login-brand">'
+        "<h1>🎮 Quiz Interativo</h1>"
+        "<p>Quizzes e provas em tempo real</p>"
+        "</div>",
+        unsafe_allow_html=True,
     )
 
-    modo = st.radio(
-        "Como deseja entrar?",
-        ["👨‍🎓 Aluno", "👨‍🏫 Professor"],
-        horizontal=True,
-        key="login_mode",
-    )
+    col_left, col_right = st.columns([4, 6], gap="small")
 
-    if modo.startswith("👨‍🎓"):
-        render_student_login_section()
-    else:
-        render_professor_login_section()
+    with col_left:
+        st.markdown('<span class="login-col-marker"></span>', unsafe_allow_html=True)
+        if view == "signup":
+            st.markdown(
+                '<p class="login-accent-title">Bem-vindo de volta!</p>'
+                '<p class="login-accent-text">Para continuar no quiz, entre com sua conta.</p>',
+                unsafe_allow_html=True,
+            )
+            if st.button("ENTRAR", key="go_signin", use_container_width=True):
+                st.session_state.auth_view = "signin"
+                st.rerun()
+        else:
+            st.markdown(
+                '<p class="login-accent-title">Criar conta</p>'
+                '<p class="login-accent-text">Primeiro acesso? Cadastre-se em poucos segundos.</p>',
+                unsafe_allow_html=True,
+            )
+            if st.button("CADASTRAR-SE", key="go_signup", use_container_width=True):
+                st.session_state.auth_view = "signup"
+                st.rerun()
+
+    with col_right:
+        st.markdown('<span class="login-col-marker"></span>', unsafe_allow_html=True)
+        if view == "signup":
+            render_login_signup_panel()
+        else:
+            render_login_signin_panel()
 
 
 def render_sidebar_logout():
@@ -1395,7 +1609,7 @@ def _render_quiz_results():
 # Main
 # ---------------------------
 def main():
-    st.set_page_config(page_title="Quiz Interativo", layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_title="Quiz Interativo", layout="wide", initial_sidebar_state="collapsed")
     init_session_state()
 
     if st.session_state.role is None:
