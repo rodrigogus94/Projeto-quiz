@@ -37,8 +37,11 @@ import importlib
 import quiz_storage
 _ui_theme_mod = importlib.reload(importlib.import_module("ui_theme"))
 apply_ui_theme = _ui_theme_mod.apply_ui_theme
+chart_palette = _ui_theme_mod.chart_palette
+classification_badge_colors = _ui_theme_mod.classification_badge_colors
 finalize_ui_theme = _ui_theme_mod.finalize_ui_theme
 render_theme_selector = _ui_theme_mod.render_theme_selector
+style_matplotlib_figure = _ui_theme_mod.style_matplotlib_figure
 from google_auth import (
     clear_oauth_session,
     google_oauth_configured,
@@ -331,6 +334,7 @@ def plot_student_result(answers, total):
     if total <= 0:
         st.info("Sem perguntas para exibir o gráfico.")
         return
+    pal = chart_palette()
     correct = sum(answers)
     wrong = total - correct
     fig, ax = plt.subplots()
@@ -338,10 +342,12 @@ def plot_student_result(answers, total):
         [correct, wrong],
         labels=["Acertos", "Erros"],
         autopct="%1.1f%%",
-        colors=["#2ecc71", "#e74c3c"],
+        colors=[pal["correct"], pal["wrong"]],
         startangle=90,
+        textprops={"color": pal["text"]},
     )
     ax.axis("equal")
+    style_matplotlib_figure(fig, ax, grid=False)
     _show_figure(fig)
 
 
@@ -349,22 +355,25 @@ def plot_leaderboard_comparison(leaderboard):
     if not leaderboard:
         st.info("Nenhum aluno cadastrado ainda.")
         return
+    pal = chart_palette()
     df = pd.DataFrame(leaderboard)
     df["porcentagem"] = (df["score"] / df["total"]) * 100
     df = df.sort_values("porcentagem", ascending=False)
     fig, ax = plt.subplots(figsize=(8, 4))
-    ax.barh(df["name"], df["porcentagem"], color="#3498db")
+    ax.barh(df["name"], df["porcentagem"], color=pal["bar"])
     ax.set_xlabel("Acertos (%)")
     ax.set_title("Comparação de Desempenho entre Alunos")
     ax.invert_yaxis()
+    style_matplotlib_figure(fig, ax)
     for i, v in enumerate(df["porcentagem"]):
-        ax.text(v + 1, i, f"{v:.1f}%", va="center")
+        ax.text(v + 1, i, f"{v:.1f}%", va="center", color=pal["text"])
     _show_figure(fig)
 
 
 def plot_question_performance(leaderboard, total_questions):
     if not leaderboard or total_questions <= 0:
         return
+    pal = chart_palette()
     pergunta_acertos = [0] * total_questions
     for aluno in leaderboard:
         for i, acertou in enumerate(aluno["responses"]):
@@ -373,14 +382,15 @@ def plot_question_performance(leaderboard, total_questions):
     num_alunos = len(leaderboard)
     percentuais = [(acertos / num_alunos) * 100 for acertos in pergunta_acertos]
     fig, ax = plt.subplots(figsize=(10, 5))
-    ax.bar(range(1, total_questions + 1), percentuais, color="#f39c12")
+    ax.bar(range(1, total_questions + 1), percentuais, color=pal["performance"])
     ax.set_xticks(range(1, total_questions + 1))
     ax.set_xlabel("Número da Pergunta")
     ax.set_ylabel("Alunos que acertaram (%)")
     ax.set_title("Taxa de Acertos por Pergunta (todos os alunos)")
     ax.set_ylim(0, 100)
+    style_matplotlib_figure(fig, ax)
     for i, p in enumerate(percentuais):
-        ax.text(i + 1, p + 1, f"{p:.1f}%", ha="center")
+        ax.text(i + 1, p + 1, f"{p:.1f}%", ha="center", color=pal["text"])
     _show_figure(fig)
 
 
@@ -1534,7 +1544,7 @@ def render_students_tab():
 
 
 def render_classification_badge(classification: str):
-    colors = {"A": "#2ecc71", "PA": "#f39c12", "NA": "#e74c3c"}
+    colors = classification_badge_colors()
     clf = classification if classification in CLASSIFICATIONS else "NA"
     st.markdown(
         f'<span style="background:{colors[clf]};color:white;padding:4px 10px;'

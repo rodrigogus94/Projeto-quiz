@@ -71,6 +71,63 @@ THEME_TOKENS = {
     },
 }
 
+ALERT_TOKENS = {
+    "light": {
+        "success_bg": "rgba(39, 174, 96, 0.12)",
+        "success_text": "#1a5c38",
+        "success_border": "rgba(39, 174, 96, 0.4)",
+        "warning_bg": "rgba(243, 156, 18, 0.14)",
+        "warning_text": "#8a5a00",
+        "warning_border": "rgba(243, 156, 18, 0.45)",
+        "error_bg": "rgba(231, 76, 60, 0.12)",
+        "error_text": "#8b2e24",
+        "error_border": "rgba(231, 76, 60, 0.42)",
+        "info_bg": "rgba(52, 152, 219, 0.12)",
+        "info_text": "#1a5276",
+        "info_border": "rgba(52, 152, 219, 0.4)",
+    },
+    "dark": {
+        "success_bg": "rgba(88, 214, 141, 0.16)",
+        "success_text": "#b8f0d0",
+        "success_border": "rgba(88, 214, 141, 0.38)",
+        "warning_bg": "rgba(245, 176, 65, 0.18)",
+        "warning_text": "#ffe0a8",
+        "warning_border": "rgba(245, 176, 65, 0.42)",
+        "error_bg": "rgba(240, 128, 128, 0.18)",
+        "error_text": "#ffd0d0",
+        "error_border": "rgba(240, 128, 128, 0.42)",
+        "info_bg": "rgba(91, 168, 160, 0.2)",
+        "info_text": "#c5e8e4",
+        "info_border": "rgba(91, 168, 160, 0.42)",
+    },
+}
+
+CHART_PALETTES = {
+    "light": {
+        "figure": "#FFFFFF",
+        "text": "#31333F",
+        "grid": "rgba(49, 51, 63, 0.2)",
+        "correct": "#27ae60",
+        "wrong": "#c75555",
+        "bar": "#458588",
+        "performance": "#d68910",
+    },
+    "dark": {
+        "figure": "#1d2021",
+        "text": "#e8edf2",
+        "grid": "rgba(232, 237, 242, 0.2)",
+        "correct": "#58d68d",
+        "wrong": "#f08080",
+        "bar": "#5ba8a0",
+        "performance": "#f5b041",
+    },
+}
+
+CLASSIFICATION_BADGE_COLORS = {
+    "light": {"A": "#27ae60", "PA": "#d68910", "NA": "#c75555"},
+    "dark": {"A": "#3dd68c", "PA": "#f5b041", "NA": "#f08080"},
+}
+
 LOGIN_THEME_TOKENS = {
     "light": {
         "panel_right": "#FFFFFF",
@@ -113,10 +170,44 @@ def _current_theme() -> str:
     return choice
 
 
+def get_resolved_theme() -> str:
+    """Tema efetivo para código Python (gráficos, badges). Sistema → claro."""
+    choice = _current_theme()
+    if choice in THEME_COLORS:
+        return choice
+    return "light"
+
+
+def chart_palette() -> dict[str, str]:
+    return CHART_PALETTES[get_resolved_theme()]
+
+
+def classification_badge_colors() -> dict[str, str]:
+    return CLASSIFICATION_BADGE_COLORS[get_resolved_theme()]
+
+
+def style_matplotlib_figure(fig, ax, *, grid: bool = True) -> None:
+    """Aplica cores do tema atual a uma figura Matplotlib."""
+    pal = chart_palette()
+    fig.patch.set_facecolor(pal["figure"])
+    ax.set_facecolor(pal["figure"])
+    ax.tick_params(colors=pal["text"])
+    ax.xaxis.label.set_color(pal["text"])
+    ax.yaxis.label.set_color(pal["text"])
+    title = ax.get_title()
+    if title:
+        ax.set_title(title, color=pal["text"])
+    for spine in ax.spines.values():
+        spine.set_color(pal["grid"])
+    if grid:
+        ax.grid(True, alpha=0.25, color=pal["grid"])
+
+
 def _css_variables(theme: str) -> str:
     colors = THEME_COLORS[theme]
     tokens = THEME_TOKENS[theme]
     login = LOGIN_THEME_TOKENS[theme]
+    alerts = ALERT_TOKENS[theme]
     return f"""
     color-scheme: {theme};
     --primary-color: {colors["primary"]};
@@ -151,6 +242,18 @@ def _css_variables(theme: str) -> str:
     --kahoot-login-google-bg: {login["google_bg"]};
     --kahoot-login-secondary-btn-bg: {login["secondary_btn_bg"]};
     --kahoot-login-secondary-btn-text: {login["secondary_btn_text"]};
+    --kahoot-alert-success-bg: {alerts["success_bg"]};
+    --kahoot-alert-success-text: {alerts["success_text"]};
+    --kahoot-alert-success-border: {alerts["success_border"]};
+    --kahoot-alert-warning-bg: {alerts["warning_bg"]};
+    --kahoot-alert-warning-text: {alerts["warning_text"]};
+    --kahoot-alert-warning-border: {alerts["warning_border"]};
+    --kahoot-alert-error-bg: {alerts["error_bg"]};
+    --kahoot-alert-error-text: {alerts["error_text"]};
+    --kahoot-alert-error-border: {alerts["error_border"]};
+    --kahoot-alert-info-bg: {alerts["info_bg"]};
+    --kahoot-alert-info-text: {alerts["info_text"]};
+    --kahoot-alert-info-border: {alerts["info_border"]};
     """
 
 
@@ -311,6 +414,88 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div {
 [data-testid="stDataFrame"] {
     border: 1px solid var(--kahoot-border-strong) !important;
     border-radius: 0.5rem !important;
+    background-color: var(--background-color) !important;
+}
+[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"],
+[data-testid="stDataFrame"] [data-testid="glideDataEditor"],
+[data-testid="stDataFrame"] canvas,
+[data-testid="stDataFrame"] div {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}
+[data-testid="stMetric"] {
+    background-color: var(--secondary-background-color) !important;
+    border: 1px solid var(--kahoot-border-strong) !important;
+    border-radius: 0.5rem !important;
+    padding: 0.65rem 0.85rem !important;
+}
+[data-testid="stMetricLabel"] {
+    color: var(--kahoot-text-muted) !important;
+}
+[data-testid="stMetricLabel"] p,
+[data-testid="stMetricLabel"] div {
+    color: var(--kahoot-text-muted) !important;
+}
+[data-testid="stMetricValue"] {
+    color: var(--text-color) !important;
+}
+[data-testid="stMetricValue"] div {
+    color: var(--text-color) !important;
+}
+[data-testid="stMetricDelta"] svg {
+    stroke: currentColor !important;
+}
+[data-testid="stAlertContainer"] {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0.25rem 0 !important;
+}
+[data-testid="stAlertContentSuccess"] {
+    background-color: var(--kahoot-alert-success-bg) !important;
+    color: var(--kahoot-alert-success-text) !important;
+    border: 1px solid var(--kahoot-alert-success-border) !important;
+    border-radius: 0.5rem !important;
+}
+[data-testid="stAlertContentWarning"] {
+    background-color: var(--kahoot-alert-warning-bg) !important;
+    color: var(--kahoot-alert-warning-text) !important;
+    border: 1px solid var(--kahoot-alert-warning-border) !important;
+    border-radius: 0.5rem !important;
+}
+[data-testid="stAlertContentError"] {
+    background-color: var(--kahoot-alert-error-bg) !important;
+    color: var(--kahoot-alert-error-text) !important;
+    border: 1px solid var(--kahoot-alert-error-border) !important;
+    border-radius: 0.5rem !important;
+}
+[data-testid="stAlertContentInfo"] {
+    background-color: var(--kahoot-alert-info-bg) !important;
+    color: var(--kahoot-alert-info-text) !important;
+    border: 1px solid var(--kahoot-alert-info-border) !important;
+    border-radius: 0.5rem !important;
+}
+[data-testid^="stAlertContent"] p,
+[data-testid^="stAlertContent"] span,
+[data-testid^="stAlertContent"] div,
+[data-testid^="stAlertContent"] label {
+    color: inherit !important;
+}
+[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] label,
+[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] label span,
+[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] label p,
+[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] div[role="radiogroup"] {
+    color: var(--text-color) !important;
+}
+[data-testid="stForm"] {
+    border: 1px solid var(--kahoot-border-strong) !important;
+    border-radius: 0.5rem !important;
+    padding: 0.75rem !important;
+    background-color: var(--background-color) !important;
+}
+[data-testid="stForm"] label,
+[data-testid="stForm"] p,
+[data-testid="stForm"] span {
+    color: var(--text-color) !important;
 }
 section[data-testid="stSidebar"] .stButton > button[kind="secondary"],
 section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]),
@@ -372,6 +557,12 @@ section[data-testid="stSidebar"] .kahoot-logout-confirm {
 [data-testid="stAlert"] p,
 [data-testid="stAlert"] div {
     color: inherit !important;
+}
+[data-baseweb="toast"] [data-testid="stAlertContentSuccess"],
+[data-baseweb="toast"] [data-testid="stAlertContentWarning"],
+[data-baseweb="toast"] [data-testid="stAlertContentError"],
+[data-baseweb="toast"] [data-testid="stAlertContentInfo"] {
+    border-radius: 0.5rem !important;
 }
 header[data-testid="stHeader"] {
     background: var(--background-color) !important;
