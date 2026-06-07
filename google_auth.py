@@ -241,6 +241,7 @@ def render_google_login_button(
     key: str,
     *,
     role_hint: str = "professor",
+    use_container_width: bool = True,
 ) -> dict | None:
     if not google_oauth_configured():
         return None
@@ -259,7 +260,7 @@ def render_google_login_button(
             cfg["redirect_uri"],
             SCOPES,
             key=key,
-            use_container_width=True,
+            use_container_width=use_container_width,
         )
     except StreamlitOauthError:
         _clear_oauth_state_keys(key)

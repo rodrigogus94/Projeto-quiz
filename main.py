@@ -414,21 +414,52 @@ def inject_login_page_css():
         .login-social-row {{
             display: flex;
             justify-content: center;
-            gap: 0.75rem;
-            margin-bottom: 1rem;
+            margin-bottom: 0.35rem;
         }}
-        .login-social-icon {{
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            border: 1px solid #e5e7eb;
+        div[data-testid="column"]:has(.google-oauth-slot) {{
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
-            color: #6b7280;
-            font-size: 0.72rem;
-            font-weight: 600;
-            background: #f9fafb;
+        }}
+        div[data-testid="column"]:has(.google-oauth-slot) .stButton {{
+            display: flex;
+            justify-content: center;
+            width: auto;
+        }}
+        div[data-testid="column"]:has(.google-oauth-slot) .stButton > button {{
+            width: 52px !important;
+            height: 52px !important;
+            min-height: 52px !important;
+            border-radius: 50% !important;
+            padding: 0 !important;
+            font-size: 1.2rem !important;
+            font-weight: 700 !important;
+            background: #ffffff !important;
+            color: #4285F4 !important;
+            border: 1px solid #e5e7eb !important;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+        }}
+        div[data-testid="column"]:has(.google-oauth-slot) .stButton > button:hover {{
+            border-color: #4285F4 !important;
+            background: #f8faff !important;
+            color: #1a73e8 !important;
+            box-shadow: 0 4px 14px rgba(66, 133, 244, 0.22);
+        }}
+        div[data-testid="column"]:has(.google-oauth-slot--prof) .stButton > button {{
+            color: {LOGIN_ACCENT} !important;
+        }}
+        div[data-testid="column"]:has(.google-oauth-slot--prof) .stButton > button:hover {{
+            border-color: {LOGIN_ACCENT} !important;
+            background: #f5f3ff !important;
+            color: {LOGIN_ACCENT_DARK} !important;
+            box-shadow: 0 4px 14px rgba(108, 99, 255, 0.22);
+        }}
+        .google-oauth-caption {{
+            text-align: center;
+            color: #9ca3af;
+            font-size: 0.75rem;
+            margin: 0.15rem 0 0.85rem;
         }}
         div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stButton > button[kind="primary"] {{
             background: {LOGIN_ACCENT};
@@ -532,25 +563,39 @@ def _handle_professor_google(profile: dict):
         st.rerun()
 
 
+def render_google_icon_login(key: str, role_hint: str, *, professor: bool = False) -> dict | None:
+    if not google_oauth_configured():
+        return None
+    slot_class = "google-oauth-slot google-oauth-slot--prof" if professor else "google-oauth-slot"
+    _, col_icon, _ = st.columns([2.2, 1, 2.2])
+    with col_icon:
+        st.markdown(f'<div class="{slot_class}"></div>', unsafe_allow_html=True)
+        return render_google_login_button(
+            "G",
+            key=key,
+            role_hint=role_hint,
+            use_container_width=False,
+        )
+
+
 def render_login_signup_panel():
-    st.markdown(
-        '<p class="login-form-title">Criar conta</p>'
-        '<div class="login-social-row">'
-        '<span class="login-social-icon">G</span>'
-        "</div>"
-        '<p class="login-form-hint">ou cadastre-se com seu nome:</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<p class="login-form-title">Criar conta</p>', unsafe_allow_html=True)
 
     if google_oauth_configured():
-        profile = render_google_login_button(
-            "Continuar com Google",
-            key="oauth_student_signup",
-            role_hint="student",
-        )
+        st.markdown('<div class="login-social-row"></div>', unsafe_allow_html=True)
+        profile = render_google_icon_login("oauth_student_signup", "student")
         if profile:
             _handle_student_google(profile)
-        st.markdown('<p class="login-divider">ou</p>', unsafe_allow_html=True)
+        st.markdown(
+            '<p class="google-oauth-caption">Entrar com Google</p>'
+            '<p class="login-form-hint">ou cadastre-se com seu nome:</p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<p class="login-form-hint">Cadastre-se com seu nome:</p>',
+            unsafe_allow_html=True,
+        )
 
     with st.form("register_on_login"):
         name = st.text_input("Nome", placeholder="Ex.: Maria Silva", label_visibility="collapsed")
@@ -568,14 +613,14 @@ def render_login_signin_panel():
 
     st.markdown("**👨‍🎓 Aluno**")
     if google_oauth_configured():
-        profile = render_google_login_button(
-            "Entrar com Google",
-            key="oauth_student_signin",
-            role_hint="student",
-        )
+        profile = render_google_icon_login("oauth_student_signin", "student")
         if profile:
             _handle_student_google(profile)
-        st.markdown('<p class="login-divider">ou</p>', unsafe_allow_html=True)
+        st.markdown(
+            '<p class="google-oauth-caption">Entrar com Google</p>'
+            '<p class="login-divider">ou</p>',
+            unsafe_allow_html=True,
+        )
 
     if st.button("Entrar como aluno (sem Google)", use_container_width=True, key="student_no_google"):
         st.session_state.role = "student"
@@ -592,13 +637,17 @@ def render_login_signin_panel():
         st.caption(
             f"Novos professores precisam de aprovação do administrador ({get_system_admin_email()})."
         )
-        profile = render_google_login_button(
-            "Entrar como professor",
-            key="oauth_professor_signin",
-            role_hint="professor",
+        profile = render_google_icon_login(
+            "oauth_professor_signin",
+            "professor",
+            professor=True,
         )
         if profile:
             _handle_professor_google(profile)
+        st.markdown(
+            '<p class="google-oauth-caption">Entrar como professor</p>',
+            unsafe_allow_html=True,
+        )
     else:
         render_oauth_setup_help()
         if legacy_password_enabled():
