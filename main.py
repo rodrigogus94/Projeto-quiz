@@ -732,7 +732,7 @@ def _professor_nav_sections(show_admin_tab: bool) -> list[tuple[str, str]]:
         ("exams", "📝 Provas"),
         ("students", "👥 Alunos cadastrados"),
         ("results", "📊 Resultados"),
-        ("config", "🔐 Conta"),
+        ("config", "🔐 Contas"),
     ]
     if show_admin_tab:
         sections.append(("admin", "🛡️ Aprovações"))
@@ -816,57 +816,128 @@ def render_admin_approvals_tab():
                         st.rerun()
 
 
-def render_auth_config_tab():
-    st.subheader("Usuários e autenticação")
-    st.caption(
-        "Todos entram com Google ou pelo nome (alunos). Novas contas aguardam aprovação na aba "
-        "**Aprovações**; você também pode alterar o papel abaixo."
+_ACCOUNT_STATUS_LABELS = {
+    "pending": "Pendente",
+    "approved": "Aprovado",
+    "rejected": "Negado",
+}
+
+
+def _current_user_is_admin() -> bool:
+    user = st.session_state.get("current_user") or {}
+    return bool(
+        user.get("is_admin") or auth_users.is_system_admin(user.get("email"))
     )
 
+
+def _account_user_summary(u: dict) -> str:
+    status = _ACCOUNT_STATUS_LABELS.get(
+        auth_users.user_account_status(u),
+        auth_users.user_account_status(u),
+    )
+    email = u.get("email") or "sem e-mail"
+    admin_mark = " · admin" if u.get("is_admin") or auth_users.is_system_admin(u.get("email")) else ""
+    return f"{u.get('name', '—')} ({email}) — {status}{admin_mark}"
+
+
+def render_account_role_manager(role: str):
+    role_label = "professor" if role == "professor" else "aluno"
+    role_plural = "professores" if role == "professor" else "alunos"
+    users = sorted(
+        auth_users.list_users_by_role(role),
+        key=lambda u: (u.get("name") or "").lower(),
+    )
+
+    if not users:
+        st.info(f"Nenhum {role_label} cadastrado no momento.")
+        return
+
+    st.caption(f"**{len(users)}** {role_plural} · edite os dados ou remova contas abaixo.")
+
+    current_user_id = (st.session_state.get("current_user") or {}).get("id")
+
+    for u in users:
+        is_admin_account = bool(
+            u.get("is_admin") or auth_users.is_system_admin(u.get("email"))
+        )
+        with st.expander(_account_user_summary(u), expanded=False):
+            st.caption(
+                f"Login: {u.get('auth_provider', '—')}"
+                + (f" · criado em {u['created_at'][:10]}" if u.get("created_at") else "")
+            )
+
+            with st.form(f"edit_account_{role}_{u['id']}"):
+                new_name = st.text_input("Nome", value=u.get("name", ""))
+                new_email = st.text_input(
+                    "E-mail",
+                    value=u.get("email") or "",
+                    disabled=role == "student" and not u.get("email"),
+                    help="Alunos cadastrados só por nome não possuem e-mail.",
+                )
+                status_options = list(auth_users.ACCOUNT_STATUSES)
+                current_status = auth_users.user_account_status(u)
+                new_status = st.selectbox(
+                    "Status da conta",
+                    options=status_options,
+                    index=status_options.index(current_status),
+                    format_func=lambda s: _ACCOUNT_STATUS_LABELS.get(s, s),
+                    disabled=is_admin_account,
+                )
+                if st.form_submit_button("💾 Salvar alterações", type="primary"):
+                    err = auth_users.update_user_account(
+                        u["id"],
+                        name=new_name,
+                        email=new_email,
+                        status=new_status,
+                    )
+                    if err:
+                        st.error(err)
+                    else:
+                        st.success("Conta atualizada.")
+                        st.rerun()
+
+            if is_admin_account:
+                st.caption("Conta do administrador do sistema — não pode ser excluída.")
+            elif u["id"] == current_user_id:
+                st.caption("Você não pode excluir a conta da sessão ativa.")
+            elif st.button(
+                "🗑️ Excluir conta",
+                key=f"delete_account_{role}_{u['id']}",
+                type="secondary",
+            ):
+                err = auth_users.delete_user_account(u["id"])
+                if err:
+                    st.error(err)
+                else:
+                    st.success(f"Conta de **{u.get('name')}** removida.")
+                    st.rerun()
+
+
+def render_auth_config_tab():
+    st.subheader("Gerenciar contas")
     user = st.session_state.get("current_user")
     if user:
         st.write(f"**Sessão atual:** {user.get('name')} — `{user.get('role')}`")
         if user.get("email"):
             st.write(f"E-mail: {user['email']}")
-        if user.get("is_admin") or auth_users.is_system_admin(user.get("email")):
-            st.success(f"Você é o administrador do sistema ({auth_users.get_system_admin_email()}).")
 
-    st.markdown("---")
-    st.markdown("#### Usuários cadastrados")
-    users = auth_users.load_users()
-    if not users:
-        st.info("Nenhum usuário na tabela ainda. Professores entram via Google; alunos ao se cadastrarem.")
+    is_admin = _current_user_is_admin()
+    if is_admin:
+        st.success(f"Administrador do sistema: **{auth_users.get_system_admin_email()}**")
+        st.caption(
+            "Novas contas aguardam aprovação na aba **Aprovações**. "
+            "Aqui você edita ou remove professores e alunos já cadastrados."
+        )
+        tab_prof, tab_stud = st.tabs(["👨‍🏫 Professores", "👨‍🎓 Alunos"])
+        with tab_prof:
+            render_account_role_manager("professor")
+        with tab_stud:
+            render_account_role_manager("student")
     else:
-        rows = []
-        for u in users:
-            status = u.get("status", "—") if u.get("role") == "professor" else "—"
-            rows.append(
-                {
-                    "Nome": u.get("name", "—"),
-                    "E-mail": u.get("email") or "—",
-                    "Papel": u.get("role", "—"),
-                    "Status": status,
-                    "Login": u.get("auth_provider", "—"),
-                }
-            )
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-
-        st.markdown("##### Alterar papel de um usuário")
-        user_options = {
-            f"{u.get('name', '—')} ({u.get('email') or 'sem e-mail'})": u["id"]
-            for u in users
-            if u.get("email")
-        }
-        if user_options:
-            pick = st.selectbox("Usuário", list(user_options.keys()))
-            new_role = st.selectbox("Novo papel", list(auth_users.ROLES))
-            if st.button("Salvar papel"):
-                err = auth_users.set_user_role(user_options[pick], new_role)
-                if err:
-                    st.error(err)
-                else:
-                    st.success("Papel atualizado.")
-                    st.rerun()
+        st.caption(
+            "Entrada com Google ou pelo nome (alunos). "
+            "Somente o administrador pode editar contas nesta seção."
+        )
 
     if not google_oauth_configured() and legacy_password_enabled():
         st.markdown("---")

@@ -338,6 +338,85 @@ def set_user_role(user_id: str, role: str) -> str | None:
     return "Usuário não encontrado."
 
 
+def _rename_student_roster(old_name: str, new_name: str) -> None:
+    from quiz_storage import find_student_by_name, update_student
+
+    roster = find_student_by_name(old_name)
+    if roster:
+        update_student(roster["id"], new_name)
+
+
+def _remove_student_roster(name: str) -> None:
+    from quiz_storage import delete_student, find_student_by_name
+
+    roster = find_student_by_name(name)
+    if roster:
+        delete_student(roster["id"])
+
+
+def update_user_account(
+    user_id: str,
+    *,
+    name: str | None = None,
+    email: str | None = None,
+    status: str | None = None,
+) -> str | None:
+    users = load_users()
+    target = next((u for u in users if u["id"] == user_id), None)
+    if not target:
+        return "Usuário não encontrado."
+
+    old_name = target.get("name", "")
+    if name is not None:
+        clean_name = " ".join(name.strip().split())
+        if not clean_name:
+            return "Informe o nome."
+        if target.get("role") == "student":
+            duplicate = find_student_by_name(clean_name)
+            if duplicate and duplicate["id"] != user_id:
+                return "Já existe outro aluno com este nome."
+        target["name"] = clean_name
+
+    if email is not None:
+        clean_email = _normalize_email(email) if email.strip() else None
+        if clean_email:
+            other = find_user_by_email(clean_email)
+            if other and other["id"] != user_id:
+                return "Este e-mail já está em uso por outra conta."
+        target["email"] = clean_email
+
+    if status is not None:
+        if status not in ACCOUNT_STATUSES:
+            return "Status inválido."
+        if is_system_admin(target.get("email")) and status != "approved":
+            return "O administrador do sistema deve permanecer aprovado."
+        target["status"] = status
+        if status == "approved" and target.get("role") == "student":
+            _sync_approved_student_to_roster(target.get("name", ""))
+
+    if target.get("role") == "student" and target.get("name") != old_name:
+        _rename_student_roster(old_name, target.get("name", ""))
+
+    target["updated_at"] = datetime.now(timezone.utc).isoformat()
+    save_users(users)
+    return None
+
+
+def delete_user_account(user_id: str) -> str | None:
+    target = find_user_by_id(user_id)
+    if not target:
+        return "Usuário não encontrado."
+    if is_system_admin(target.get("email")) or target.get("is_admin"):
+        return "Não é possível excluir o administrador do sistema."
+
+    if target.get("role") == "student":
+        _remove_student_roster(target.get("name", ""))
+
+    users = [u for u in load_users() if u["id"] != user_id]
+    save_users(users)
+    return None
+
+
 def list_users_by_role(role: str) -> list:
     return [u for u in load_users() if u.get("role") == role and u.get("active", True)]
 

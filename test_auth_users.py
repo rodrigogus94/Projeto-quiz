@@ -4,14 +4,18 @@ import uuid
 from auth_users import (
     approve_professor,
     approve_user,
+    delete_user_account,
     ensure_name_student_user,
     find_student_by_name,
+    find_user_by_email,
+    find_user_by_id,
     get_pending_professors,
     get_pending_users,
     is_system_admin,
     register_student_request,
     resolve_professor_login,
     resolve_unified_google_login,
+    update_user_account,
     upsert_google_user,
 )
 from quiz_storage import load_config, save_config
@@ -138,6 +142,24 @@ class TestAuthUsers(unittest.TestCase):
             role="student",
         )
         self.assertEqual(user["role"], "student")
+
+    def test_update_and_delete_student_account(self):
+        user, _ = register_student_request(f"Temp {uuid.uuid4().hex[:6]}")
+        new_name = f"Editado {uuid.uuid4().hex[:6]}"
+        err = update_user_account(user["id"], name=new_name, status="approved")
+        self.assertIsNone(err)
+        updated = find_user_by_id(user["id"])
+        self.assertEqual(updated["name"], new_name)
+        self.assertEqual(updated["status"], "approved")
+        err = delete_user_account(user["id"])
+        self.assertIsNone(err)
+        self.assertIsNone(find_user_by_id(user["id"]))
+
+    def test_cannot_delete_system_admin(self):
+        admin = find_user_by_email("rodrigogus94@gmail.com")
+        if admin:
+            err = delete_user_account(admin["id"])
+            self.assertIsNotNone(err)
 
 
 if __name__ == "__main__":
