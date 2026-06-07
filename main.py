@@ -1716,8 +1716,34 @@ def _render_quiz_results():
 # ---------------------------
 # Main
 # ---------------------------
+def configure_streamlit_page():
+    """Deve ser a primeira chamada Streamlit do script (antes de init_session_state)."""
+    role = st.session_state.get("role")
+    if role == "professor":
+        page_title = "Quiz Interativo - Professor"
+        sidebar_state = "expanded"
+    elif role == "student":
+        page_title = "Quiz Interativo - Aluno"
+        sidebar_state = "expanded"
+    else:
+        page_title = "Quiz Interativo"
+        sidebar_state = "collapsed"
+
+    st.set_page_config(
+        page_title=page_title,
+        page_icon="🎮",
+        layout="wide",
+        initial_sidebar_state=sidebar_state,
+        menu_items={
+            "Get Help": None,
+            "Report a bug": None,
+            "About": "Quiz interativo com login Google e cadastro por nome.",
+        },
+    )
+
+
 def main():
-    st.set_page_config(page_title="Quiz Interativo", layout="wide", initial_sidebar_state="collapsed")
+    configure_streamlit_page()
     init_session_state()
 
     if st.session_state.role is None:
