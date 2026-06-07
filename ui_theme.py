@@ -959,7 +959,15 @@ GOOGLE_ICON_SVG = (
     "%3C/svg%3E"
 )
 
+def _login_row_selector() -> str:
+    return (
+        '.stApp:has(.kahoot-login-marker) '
+        '[data-testid="stHorizontalBlock"]:has(.kahoot-login-marker)'
+    )
+
+
 def login_page_css() -> str:
+    row = _login_row_selector()
     return f"""
 .stApp:has(.kahoot-login-marker) section[data-testid="stSidebar"],
 .stApp:has(.kahoot-login-marker) footer {{
@@ -971,79 +979,81 @@ def login_page_css() -> str:
     min-height: 0 !important;
     visibility: hidden !important;
 }}
-.stApp:has(.kahoot-login-marker) .main {{
-    padding-top: 0 !important;
-}}
 .stApp:has(.kahoot-login-marker) [data-testid="stDecoration"] {{
     display: none !important;
 }}
-.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) {{
-    height: 0 !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    margin: 0 !important;
-    border: none !important;
+.stApp:has(.kahoot-login-marker) .main {{
+    padding-top: 0 !important;
 }}
 .stApp:has(.kahoot-login-marker) .main .block-container {{
     padding: 0 !important;
     max-width: 100% !important;
     margin: 0 !important;
 }}
-.kahoot-login-marker {{ display: none !important; }}
-.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) {{
-    position: fixed !important;
-    top: 1rem !important;
-    right: 1.25rem !important;
-    z-index: 60 !important;
-    width: auto !important;
-    max-width: 11rem !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    gap: 0 !important;
+.stApp:has(.kahoot-login-marker) [data-testid="stSegmentedControl"] {{
+    display: none !important;
 }}
-.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) > [data-testid="stColumn"] {{
-    width: auto !important;
-    flex: 0 0 auto !important;
-    padding: 0 !important;
-    min-height: unset !important;
+.kahoot-login-marker,
+.kahoot-login-form-marker {{
+    display: none !important;
 }}
-.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) [data-testid="stSegmentedControl"] {{
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
+.stApp:has(.kahoot-login-marker) .kahoot-login-toast {{
+    position: fixed;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 80;
+    max-width: min(24rem, calc(100vw - 2rem));
+    padding: 0.55rem 1rem;
+    text-align: center;
+    font-size: 0.85rem;
+    border-radius: 8px;
+    border: 1px solid var(--kahoot-alert-success-border);
+    background: var(--kahoot-alert-success-bg);
+    color: var(--kahoot-alert-success-text);
 }}
-.kahoot-login-theme-marker {{ display: none !important; }}
+{row},
 .kahoot-login-row {{
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100vw !important;
-    height: 100vh !important;
+    inset: 0 !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    height: 100% !important;
     min-height: 100vh !important;
+    min-height: 100dvh !important;
     gap: 0 !important;
     margin: 0 !important;
+    padding: 0 !important;
     z-index: 50 !important;
-    align-items: stretch !important;
 }}
+{row} > [data-testid="stColumn"],
 .kahoot-login-row > [data-testid="stColumn"] {{
     padding: 3.5rem 3rem !important;
     display: flex !important;
     flex-direction: column !important;
     justify-content: center !important;
     align-items: center !important;
-    min-height: 100vh !important;
+    min-height: 100% !important;
     overflow-y: auto !important;
+    box-sizing: border-box !important;
 }}
+{row} > [data-testid="stColumn"]:first-child,
 .kahoot-login-row > [data-testid="stColumn"]:first-child {{
     background: {BRAND_TEAL} !important;
     flex: 0 0 50% !important;
     width: 50% !important;
     max-width: 50% !important;
 }}
+{row} > [data-testid="stColumn"]:last-child,
 .kahoot-login-row > [data-testid="stColumn"]:last-child {{
     background: var(--kahoot-login-panel-right) !important;
     flex: 0 0 50% !important;
     width: 50% !important;
     max-width: 50% !important;
 }}
+{row} > [data-testid="stColumn"] > [data-testid="stVerticalBlock"],
 .kahoot-login-row > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] {{
     justify-content: center !important;
     align-items: center !important;
@@ -1051,6 +1061,8 @@ def login_page_css() -> str:
     min-height: 100% !important;
     flex: 1 1 auto !important;
 }}
+{row} > [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"],
+{row} > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"],
 .kahoot-login-row > [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"],
 .kahoot-login-row > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{
     max-width: 360px;
@@ -1065,9 +1077,11 @@ def login_page_css() -> str:
     color: rgba(255,255,255,0.95); font-size: 0.95rem; line-height: 1.7;
     margin: 0 0 2rem; font-family: "Segoe UI", system-ui, sans-serif;
 }}
+{row} > [data-testid="stColumn"]:first-child .stButton,
 .kahoot-login-row > [data-testid="stColumn"]:first-child .stButton {{
     width: 100%; display: flex; justify-content: center;
 }}
+{row} > [data-testid="stColumn"]:first-child .stButton > button,
 .kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button {{
     background: transparent !important;
     color: #ffffff !important;
@@ -1078,23 +1092,28 @@ def login_page_css() -> str:
     letter-spacing: 0.08em !important;
     min-width: 200px !important;
 }}
+{row} > [data-testid="stColumn"]:first-child .stButton > button:hover,
 .kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button:hover {{
     background: rgba(255,255,255,0.12) !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual),
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) {{
     max-width: 42px !important; width: auto !important;
     margin: 0 auto 0.5rem !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"],
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"] {{
     flex: 0 0 auto !important; width: auto !important; max-width: none !important;
     min-height: unset !important; padding: 0 !important;
     display: flex !important; align-items: center !important; justify-content: center !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2),
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) {{
     position: relative !important;
     width: 42px !important; height: 42px !important;
     min-height: 42px !important; flex: 0 0 42px !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) > [data-testid="stVerticalBlock"],
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) > [data-testid="stVerticalBlock"] {{
     position: relative !important;
     width: 42px !important; height: 42px !important;
@@ -1108,6 +1127,9 @@ def login_page_css() -> str:
     background-size: 22px; background-repeat: no-repeat; background-position: center;
     margin: 0 auto; pointer-events: none;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) .element-container:has(
+    iframe[title="streamlit_oauth.authorize_button"]
+),
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) .element-container:has(
     iframe[title="streamlit_oauth.authorize_button"]
 ) {{
@@ -1117,6 +1139,7 @@ def login_page_css() -> str:
     margin: 0 !important; padding: 0 !important; overflow: visible !important;
     border: none !important; background: transparent !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) iframe[title="streamlit_oauth.authorize_button"],
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) iframe[title="streamlit_oauth.authorize_button"] {{
     width: 42px !important; height: 42px !important; border: none !important;
     margin: 0 !important; cursor: pointer !important;
@@ -1141,20 +1164,24 @@ def login_page_css() -> str:
     color: var(--kahoot-login-form-muted); font-size: 0.78rem; text-align: center;
     margin-top: 1.25rem; line-height: 1.5;
 }}
+{row} > [data-testid="stColumn"]:last-child label,
 .kahoot-login-row > [data-testid="stColumn"]:last-child label {{
     color: var(--kahoot-login-label) !important; font-weight: 600 !important;
 }}
+{row} > [data-testid="stColumn"]:last-child input,
 .kahoot-login-row > [data-testid="stColumn"]:last-child input {{
     background: var(--kahoot-login-input-bg) !important;
     border: 1px solid var(--kahoot-login-input-border) !important;
     color: var(--kahoot-login-input-text) !important;
     border-radius: 8px !important;
 }}
+{row} > [data-testid="stColumn"]:last-child .stTextInput > div > div,
 .kahoot-login-row > [data-testid="stColumn"]:last-child .stTextInput > div > div {{
     background: var(--kahoot-login-input-bg) !important;
     border: 1px solid var(--kahoot-login-input-border) !important;
     border-radius: 8px !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button,
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button {{
     background: {BRAND_TEAL} !important;
     color: #ffffff !important;
@@ -1164,31 +1191,72 @@ def login_page_css() -> str:
     letter-spacing: 0.08em !important;
     padding: 0.75rem 1.5rem !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button:hover,
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button:hover {{
     background: #3d7a72 !important;
 }}
+{row} > [data-testid="stColumn"]:last-child .stButton > button[kind="secondary"],
 .kahoot-login-row > [data-testid="stColumn"]:last-child .stButton > button[kind="secondary"] {{
     background: var(--kahoot-login-secondary-btn-bg) !important;
     color: var(--kahoot-login-secondary-btn-text) !important;
     border: 1px solid var(--kahoot-login-input-border) !important;
     border-radius: 25px !important;
 }}
+{row} > [data-testid="stColumn"]:last-child [data-testid="stMarkdownContainer"] p,
+{row} > [data-testid="stColumn"]:last-child [data-testid="stCaption"],
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stMarkdownContainer"] p,
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stCaption"] {{
     color: var(--kahoot-login-form-muted) !important;
 }}
 @media (max-width: 768px) {{
+    {row},
     .kahoot-login-row {{
         position: relative !important;
+        inset: auto !important;
         flex-direction: column !important;
+        width: 100% !important;
         height: auto !important;
-        min-height: 100vh !important;
+        min-height: 100dvh !important;
+        z-index: auto !important;
     }}
-    .kahoot-login-row > [data-testid="stColumn"] {{
-        min-height: auto !important;
+    {row} > [data-testid="stColumn"],
+    {row} > [data-testid="stColumn"]:first-child,
+    {row} > [data-testid="stColumn"]:last-child,
+    .kahoot-login-row > [data-testid="stColumn"],
+    .kahoot-login-row > [data-testid="stColumn"]:first-child,
+    .kahoot-login-row > [data-testid="stColumn"]:last-child {{
+        flex: 0 0 auto !important;
         width: 100% !important;
         max-width: 100% !important;
-        flex: 1 1 auto !important;
+        min-height: auto !important;
+        padding: 2rem 1.25rem !important;
+    }}
+    {row} > [data-testid="stColumn"]:first-child,
+    .kahoot-login-row > [data-testid="stColumn"]:first-child {{
+        padding-top: 2.5rem !important;
+    }}
+    {row} > [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"],
+    {row} > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"],
+    .kahoot-login-row > [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"],
+    .kahoot-login-row > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{
+        max-width: 100% !important;
+    }}
+    .kahoot-left-inner h2 {{
+        font-size: 1.6rem !important;
+    }}
+    .kahoot-left-inner p {{
+        font-size: 0.9rem !important;
+        margin-bottom: 1.25rem !important;
+    }}
+    .kahoot-form-title {{
+        font-size: 1.5rem !important;
+    }}
+    .stApp:has(.kahoot-login-marker) .kahoot-login-toast {{
+        position: relative;
+        top: auto;
+        left: auto;
+        transform: none;
+        margin: 0.75rem auto;
     }}
 }}
 """
@@ -1473,28 +1541,20 @@ def inject_login_page_css() -> None:
 
 
 def inject_login_layout_script() -> None:
-    css_json = json.dumps(login_page_css())
     st.html(
-        f"""
+        """
         <script>
-        (function() {{
-            function applyLoginLayout() {{
-                let style = document.getElementById("kahoot-login-style");
-                if (!style) {{
-                    style = document.createElement("style");
-                    style.id = "kahoot-login-style";
-                    document.head.appendChild(style);
-                }}
-                style.textContent = {css_json};
-                document.querySelectorAll(".kahoot-login-marker").forEach((marker) => {{
+        (function () {
+            function applyLoginLayout() {
+                document.querySelectorAll(".kahoot-login-marker").forEach((marker) => {
                     const row = marker.closest('[data-testid="stHorizontalBlock"]');
                     if (row) row.classList.add("kahoot-login-row");
-                }});
-            }}
+                });
+            }
             applyLoginLayout();
             setTimeout(applyLoginLayout, 50);
             setTimeout(applyLoginLayout, 300);
-        }})();
+        })();
         </script>
         """,
         unsafe_allow_javascript=True,

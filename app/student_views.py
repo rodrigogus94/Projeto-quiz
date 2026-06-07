@@ -1,0 +1,492 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timezone
+
+import streamlit as st
+
+import auth_users
+from auto_grade import (
+    grade_choice_answer,
+    grade_justify_answer,
+    summarize_answers,
+)
+from pdf_export import build_exam_pdf_bytes, export_filename
+from pdf_parser import exam_summary, question_for_student
+from quiz_storage import (
+    add_exam_submission,
+    get_active_exams,
+    get_active_materials,
+    get_exam,
+    get_material,
+    load_students,
+)
+
+from app.auth_ui import render_student_register_form
+from app.charts import plot_student_result
+from app.components import (
+    inject_student_area_css,
+    render_classification_badge,
+    render_empty_state,
+    render_flow_header,
+    render_result_banner,
+    render_student_hero,
+)
+from app.session import (
+    finish_quiz,
+    get_playable_active_materials,
+    load_student_material,
+    name_exists_in_leaderboard,
+    on_quiz_material_changed,
+    reset_quiz,
+    sync_playable_exam,
+    sync_playable_material,
+)
+
+
+def approved_students() -> list:
+    return [s for s in load_students() if auth_users.is_approved_student_name(s["name"])]
+
+
+def render_student_panel():
+    inject_student_area_css()
+    section = st.session_state.student_section
+    section_label = "Quiz" if section == "quiz" else "Provas"
+
+    st.title("👨‍🎓 Área do Aluno")
+    st.caption(f"**{section_label}** · use a navegação na barra lateral para trocar de seção.")
+
+    if section == "quiz":
+        render_student_quiz_tab()
+    else:
+        render_student_exam_tab()
+
+
+def _render_registration_gate():
+    render_empty_state(
+        icon="👋",
+        title="Bem-vindo!",
+        message="Cadastre-se para participar dos quizzes e provas da turma.",
+        hint="Após o cadastro, o administrador precisa aprovar seu acesso.",
+    )
+    with st.container(border=True):
+        if render_student_register_form("register_main", button_label="Solicitar acesso"):
+            st.rerun()
+
+
+def render_student_quiz_tab():
+    playable = get_playable_active_materials()
+    active_all = get_active_materials()
+    selected_id = sync_playable_material(playable)
+    material = get_material(selected_id) if selected_id else None
+    registered = approved_students()
+
+    if not registered:
+        _render_registration_gate()
+        return
+
+    if st.session_state.quiz_active and not st.session_state.quiz_finished:
+        _render_quiz_flow()
+        return
+
+    if st.session_state.quiz_finished:
+        _render_quiz_results()
+        return
+
+    if not active_all:
+        render_empty_state(
+            icon="📭",
+            title="Nenhum quiz disponível",
+            message="O professor ainda não ativou nenhum quiz para a turma.",
+            hint="Volte mais tarde ou peça ao professor para ativar um material.",
+        )
+        return
+
+    if not playable:
+        render_empty_state(
+            icon="🛠️",
+            title="Quizzes em preparação",
+            message="Há materiais ativos, mas eles ainda não possuem perguntas cadastradas.",
+            hint="Aguarde o professor finalizar o conteúdo.",
+        )
+        return
+
+    col_cfg, col_main = st.columns([1, 2], gap="large")
+    with col_cfg:
+        with st.container(border=True):
+            st.markdown('<div class="kahoot-config-title">Começar</div>', unsafe_allow_html=True)
+            playable_by_id = {m["id"]: m for m in playable}
+            st.selectbox(
+                "Escolha o quiz",
+                options=list(playable_by_id.keys()),
+                format_func=lambda mid: playable_by_id[mid]["title"],
+                key="selected_material_id",
+                on_change=on_quiz_material_changed,
+            )
+            picked_id = st.session_state.selected_material_id
+            mat = get_material(picked_id)
+            if mat:
+                st.caption(f"**{len(mat['questions'])}** perguntas neste quiz")
+
+            names = sorted(s["name"] for s in registered)
+            preferred = st.session_state.preferred_student_name
+            default_index = 0
+            if preferred and preferred in names:
+                default_index = names.index(preferred) + 1
+            selected_name = st.selectbox(
+                "Seu nome",
+                options=[""] + names,
+                index=default_index,
+                format_func=lambda x: "— Escolha —" if x == "" else x,
+                key="student_name_select",
+            )
+            st.divider()
+            if (
+                st.button("🆕 Iniciar quiz", use_container_width=True, type="primary")
+                and selected_name
+                and mat
+            ):
+                load_student_material(picked_id)
+                mid = st.session_state.current_material_id
+                if name_exists_in_leaderboard(selected_name, mid):
+                    st.warning("Um novo resultado será adicionado ao refazer.")
+                st.session_state.current_student_name = selected_name
+                st.session_state.preferred_student_name = selected_name
+                reset_quiz()
+                st.rerun()
+            elif not selected_name:
+                st.caption("Selecione seu nome para habilitar o início.")
+
+    with col_main:
+        m1, m2, m3 = st.columns(3)
+        with m1:
+            st.metric("Quizzes ativos", len(playable))
+        with m2:
+            q_count = len(material["questions"]) if material else 0
+            st.metric("Perguntas", q_count)
+        with m3:
+            st.metric("Alunos", len(registered))
+
+        if material:
+            render_student_hero(
+                material["title"],
+                f"Responda {len(material['questions'])} perguntas de múltipla escolha "
+                "e veja seu desempenho ao final.",
+            )
+
+        if len(playable) > 1:
+            st.markdown("#### Outros quizzes disponíveis")
+            for m in playable:
+                selected = m["id"] == selected_id
+                marker = "✓ " if selected else ""
+                with st.container(border=True):
+                    st.markdown(
+                        f"**{marker}{m['title']}**  "
+                        f'<span class="kahoot-quiz-pill">{len(m["questions"])} perguntas</span>',
+                        unsafe_allow_html=True,
+                    )
+        else:
+            st.caption("Configure o quiz à esquerda e clique em **Iniciar quiz** para começar.")
+
+
+def get_playable_active_exams() -> list:
+    return [e for e in get_active_exams() if e.get("questions")]
+
+
+def render_student_exam_tab():
+    playable_exams = get_playable_active_exams()
+    registered = approved_students()
+
+    if not registered:
+        render_empty_state(
+            icon="📝",
+            title="Cadastro necessário",
+            message="Cadastre-se na barra lateral e aguarde a aprovação do administrador.",
+            hint="Depois de aprovado, as provas aparecerão aqui.",
+        )
+        return
+
+    if st.session_state.exam_mode == "done" and st.session_state.exam_submission_result:
+        _render_exam_results()
+        return
+
+    if st.session_state.exam_mode == "take":
+        _render_exam_flow()
+        return
+
+    if not playable_exams:
+        render_empty_state(
+            icon="📋",
+            title="Nenhuma prova disponível",
+            message="O professor ainda não publicou provas ativas para a turma.",
+            hint="Quando uma prova for ativada, ela aparecerá nesta seção.",
+        )
+        return
+
+    col_cfg, col_main = st.columns([1, 2], gap="large")
+    sync_playable_exam(playable_exams)
+    exams_by_id = {e["id"]: e for e in playable_exams}
+    picked_id = st.session_state.selected_exam_id
+    exam = get_exam(picked_id)
+
+    with col_cfg:
+        with st.container(border=True):
+            st.markdown('<div class="kahoot-config-title">Abrir prova</div>', unsafe_allow_html=True)
+            st.selectbox(
+                "Escolha a prova",
+                options=list(exams_by_id.keys()),
+                format_func=lambda eid: exams_by_id[eid]["title"],
+                key="selected_exam_id",
+            )
+            if exam:
+                summary = exam_summary(exam["questions"])
+                st.caption(
+                    f"**{summary['total']}** questões · "
+                    f"{summary['choice']} múltipla escolha · {summary['justify']} justificativas"
+                )
+
+            names = sorted(s["name"] for s in registered)
+            preferred = st.session_state.preferred_student_name
+            name_index = 0
+            if preferred and preferred in names:
+                name_index = names.index(preferred) + 1
+            student_name = st.selectbox(
+                "Seu nome",
+                [""] + names,
+                index=name_index,
+                format_func=lambda x: "— Escolha —" if x == "" else x,
+                key="exam_student_name",
+            )
+            st.divider()
+            if st.button("📋 Abrir prova", type="primary", use_container_width=True) and student_name:
+                st.session_state.current_student_name = student_name
+                st.session_state.preferred_student_name = student_name
+                st.session_state.exam_mode = "take"
+                st.rerun()
+            elif not student_name:
+                st.caption("Selecione seu nome para abrir a prova.")
+
+    with col_main:
+        if exam:
+            summary = exam_summary(exam["questions"])
+            render_student_hero(
+                exam["title"],
+                f"Prova com {summary['total']} questões. Responda com calma e envie ao final.",
+            )
+        st.metric("Provas ativas", len(playable_exams))
+
+
+def _render_quiz_flow():
+    q_index = st.session_state.current_q_index
+    total_q = len(st.session_state.questions)
+    if q_index < total_q:
+        q_data = st.session_state.questions[q_index]
+        render_flow_header(
+            label="Quiz em andamento",
+            current=q_index + 1,
+            total=total_q,
+            student_name=st.session_state.current_student_name,
+        )
+
+        feedback = st.session_state.answer_feedback
+        with st.container(border=True):
+            st.markdown(
+                f'<div class="kahoot-question-card"><h4>{q_data["question"]}</h4></div>',
+                unsafe_allow_html=True,
+            )
+            if feedback is not None:
+                if feedback["is_correct"]:
+                    st.success("✅ Resposta correta!")
+                else:
+                    st.error(
+                        f"❌ Resposta incorreta. A alternativa correta era **{feedback['correct']}**."
+                    )
+                label = "Ver resultado" if q_index + 1 >= total_q else "Próxima pergunta"
+                if st.button(f"➡️ {label}", key="next_question", type="primary"):
+                    st.session_state.answer_feedback = None
+                    if q_index + 1 < total_q:
+                        st.session_state.current_q_index += 1
+                        st.rerun()
+                    else:
+                        finish_quiz()
+                        st.rerun()
+            else:
+                option_map = {chr(65 + i): opt for i, opt in enumerate(q_data["options"])}
+                selected_letter = st.radio(
+                    "Escolha uma alternativa:",
+                    options=list(option_map.keys()),
+                    format_func=lambda x: f"{x}: {option_map[x]}",
+                    key=f"q_{q_index}",
+                )
+                if st.button("✅ Responder", key="submit_answer", type="primary"):
+                    is_correct = selected_letter == q_data["correct"]
+                    st.session_state.student_answers.append(is_correct)
+                    st.session_state.answer_feedback = {
+                        "is_correct": is_correct,
+                        "correct": q_data["correct"],
+                    }
+                    st.rerun()
+    elif not st.session_state.get("quiz_finished"):
+        finish_quiz()
+        st.rerun()
+
+
+def _render_quiz_results():
+    total = len(st.session_state.questions)
+    acertos = sum(st.session_state.student_answers)
+    erros = total - acertos
+    pct = (acertos / total * 100) if total > 0 else 0.0
+
+    render_result_banner(
+        f"Parabéns, {st.session_state.current_student_name}!",
+        f"Você concluiu o quiz com {pct:.0f}% de acertos.",
+    )
+
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Acertos", acertos)
+    with c2:
+        st.metric("Erros", erros)
+    with c3:
+        st.metric("Pontuação", f"{acertos}/{total}", delta=f"{pct:.1f}%")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Desempenho visual")
+        plot_student_result(st.session_state.student_answers, total)
+    with col2:
+        st.subheader("Resumo")
+        st.write(f"✅ Você acertou **{acertos}** de **{total}** perguntas.")
+        st.write(f"❌ Errou **{erros}** perguntas.")
+        if pct >= 70:
+            st.success("Ótimo resultado! Continue assim.")
+        elif pct >= 40:
+            st.info("Bom esforço — vale revisar o conteúdo e tentar de novo.")
+        else:
+            st.warning("Não desanime — refaça o quiz para fixar o conteúdo.")
+
+    if st.button("📝 Fazer quiz novamente", type="primary"):
+        st.session_state.quiz_finished = False
+        st.session_state.quiz_active = False
+        st.rerun()
+
+
+def _render_exam_flow():
+    exam = get_exam(st.session_state.selected_exam_id)
+    if not exam:
+        st.session_state.exam_mode = "select"
+        st.warning("Prova não encontrada ou foi removida.")
+        return
+
+    total_q = len(exam["questions"])
+    render_flow_header(
+        label=exam["title"],
+        current=total_q,
+        total=total_q,
+        student_name=st.session_state.current_student_name,
+    )
+    st.caption("Responda todas as questões e envie ao final. O gabarito não é exibido.")
+
+    with st.form("exam_submit_form"):
+        answers_input = []
+        for i, q in enumerate(exam["questions"]):
+            q_view = question_for_student(q)
+            tipo = "Múltipla escolha" if q_view["type"] == "choice" else "Justificativa"
+            with st.container(border=True):
+                st.markdown(
+                    f'<div class="kahoot-exam-q"><strong>Questão {i + 1}</strong> · {tipo}</div>',
+                    unsafe_allow_html=True,
+                )
+                st.write(q_view["question"])
+                if q_view["type"] == "choice":
+                    opts = {letter: q_view["options"][j] for j, letter in enumerate("ABCD")}
+                    picked = st.radio(
+                        "Alternativa",
+                        options=list(opts.keys()),
+                        format_func=lambda x: f"{x}) {opts[x]}",
+                        key=f"exam_q_{i}",
+                        label_visibility="collapsed",
+                    )
+                    answers_input.append(("choice", picked))
+                else:
+                    text = st.text_area(
+                        "Sua resposta (justifique)",
+                        key=f"exam_q_{i}",
+                        height=120,
+                        placeholder="Escreva sua justificativa aqui…",
+                    )
+                    answers_input.append(("justify", text))
+
+        if st.form_submit_button("📤 Enviar prova", type="primary", use_container_width=True):
+            graded = []
+            for (kind, value), q_full in zip(answers_input, exam["questions"]):
+                if kind == "choice":
+                    graded.append(grade_choice_answer(value, q_full["correct"]))
+                else:
+                    graded.append(
+                        grade_justify_answer(value, q_full.get("answer_key", ""))
+                    )
+
+            summary = summarize_answers(graded)
+            submission = {
+                "id": str(uuid.uuid4()),
+                "exam_id": exam["id"],
+                "student_name": st.session_state.current_student_name,
+                "answers": graded,
+                "summary": summary,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            }
+            add_exam_submission(submission)
+            st.session_state.exam_submission_result = submission
+            st.session_state.exam_mode = "done"
+            st.rerun()
+
+    if st.button("Cancelar prova", type="secondary"):
+        st.session_state.exam_mode = "select"
+        st.rerun()
+
+
+def _render_exam_results():
+    result = st.session_state.exam_submission_result
+    summary = result.get("summary", summarize_answers(result["answers"]))
+    counts = summary["counts"]
+
+    render_result_banner(
+        f"Prova enviada, {result['student_name']}!",
+        f"Correção automática: {summary['total_points']:.1f} de {summary['max_points']:.0f} pontos "
+        f"({summary['percent']:.0f}%).",
+    )
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("Pontuação", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
+    with c2:
+        st.metric("A — Acertou", counts["A"])
+    with c3:
+        st.metric("PA — Parcial", counts["PA"])
+    with c4:
+        st.metric("NA — Não acertou", counts["NA"])
+
+    st.subheader("Resultado por questão")
+    for i, ans in enumerate(result["answers"]):
+        clf = ans.get("classification", "NA")
+        tipo = "Múltipla escolha" if ans.get("type") == "choice" else "Justificativa"
+        with st.container(border=True):
+            st.markdown(f"**Questão {i + 1}** · {tipo}")
+            render_classification_badge(clf)
+
+    exam_for_pdf = get_exam(result.get("exam_id"))
+    if exam_for_pdf:
+        st.download_button(
+            "📥 Baixar minha prova em PDF",
+            data=build_exam_pdf_bytes(exam_for_pdf, result, include_gabarito=False),
+            file_name=export_filename(exam_for_pdf, result),
+            mime="application/pdf",
+            key="student_download_exam_pdf",
+            use_container_width=True,
+        )
+
+    if st.button("↩️ Voltar às provas", type="primary"):
+        st.session_state.exam_mode = "select"
+        st.session_state.exam_submission_result = None
+        st.rerun()

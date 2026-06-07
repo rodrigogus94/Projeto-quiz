@@ -1,0 +1,27 @@
+from __future__ import annotations
+
+EMPTY_QUESTION = {
+    "question": "",
+    "options": ["", "", "", ""],
+    "correct": "A",
+}
+
+EXAM_FORMAT_HELP = """
+**Formato do PDF da prova (com gabarito — só o professor vê):**
+
+**Múltipla escolha:**
+```
+Pergunta 1: Enunciado da questão?
+Alternativa A (Vermelho): texto
+Alternativa B (Azul): texto (CORRETA)
+Alternativa C (Amarelo): texto
+Alternativa D (Verde): texto
+```
+
+**Justificativa / dissertativa:**
+```
+Pergunta 2: Explique o conceito X. (JUSTIFICATIVA)
+Gabarito: texto esperado na correção
+```
+ou use `Resposta esperada:` / `Tipo: Justificativa` / enunciado com "Justifique".
+"""
