@@ -933,19 +933,29 @@ def inject_theme_css() -> None:
                         switchCol.querySelectorAll(
                             'button, [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryBorderless"]'
                         ).forEach((btn) => {{
-                            btn.style.setProperty("background", "transparent", "important");
-                            btn.style.setProperty("background-color", "transparent", "important");
+                            btn.style.setProperty("background", "{LOGIN_SWITCH_BTN_BG}", "important");
+                            btn.style.setProperty("background-color", "{LOGIN_SWITCH_BTN_BG}", "important");
                             btn.style.setProperty("color", "#ffffff", "important");
-                            btn.style.setProperty("border", "2px solid #ffffff", "important");
+                            btn.style.setProperty("border", "none", "important");
                             btn.style.setProperty("border-radius", "25px", "important");
                             btn.style.setProperty("padding", "0.75rem 1.5rem", "important");
                             btn.style.setProperty("min-height", "2.75rem", "important");
+                            btn.style.setProperty("height", "auto", "important");
                             btn.style.setProperty("width", "100%", "important");
+                            btn.style.setProperty("display", "block", "important");
                             btn.style.setProperty("letter-spacing", "0.08em", "important");
                             btn.style.setProperty("font-weight", "600", "important");
+                            btn.style.setProperty("box-sizing", "border-box", "important");
                             btn.querySelectorAll("p, span, div").forEach((node) => {{
                                 node.style.setProperty("color", "#ffffff", "important");
                             }});
+                        }});
+                        switchCol.querySelectorAll(
+                            '.element-container:has([data-testid="stButton"]), .element-container:has(.kahoot-login-switch-marker) + .element-container, [data-testid="stButton"], .stButton'
+                        ).forEach((wrap) => {{
+                            wrap.style.setProperty("width", "100%", "important");
+                            wrap.style.setProperty("max-width", "360px", "important");
+                            wrap.style.setProperty("margin", "0 auto", "important");
                         }});
                 }}
             }}
@@ -975,6 +985,8 @@ def finalize_ui_theme() -> None:
 
 
 BRAND_TEAL = "#458588"
+LOGIN_SWITCH_BTN_BG = "#1d2021"
+LOGIN_SWITCH_BTN_BG_HOVER = "#2a2f30"
 
 GOOGLE_ICON_SVG = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E"
@@ -1183,6 +1195,33 @@ def login_page_css() -> str:
     display: block !important;
     visibility: visible !important;
 }}
+{row} > [data-testid="stColumn"]:first-child .element-container:has([data-testid="stButton"]),
+{row} > [data-testid="stColumn"]:first-child .element-container:has(.kahoot-login-switch-marker) + .element-container,
+.kahoot-login-row > [data-testid="stColumn"]:first-child .element-container:has([data-testid="stButton"]),
+.kahoot-login-row > [data-testid="stColumn"]:first-child .element-container:has(.kahoot-login-switch-marker) + .element-container,
+{row} > [data-testid="stColumn"]:first-child [data-testid="stButton"],
+.kahoot-login-row > [data-testid="stColumn"]:first-child [data-testid="stButton"] {{
+    width: 100% !important;
+    max-width: 360px !important;
+    margin: 0 auto !important;
+}}
+{row} > [data-testid="stColumn"]:first-child [data-testid="stButton"] > button,
+.kahoot-login-row > [data-testid="stColumn"]:first-child [data-testid="stButton"] > button {{
+    background: {LOGIN_SWITCH_BTN_BG} !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    padding: 0.75rem 1.5rem !important;
+    width: 100% !important;
+    min-height: 2.75rem !important;
+    box-sizing: border-box !important;
+}}
+{row} > [data-testid="stColumn"]:first-child [data-testid="stButton"] > button:hover,
+.kahoot-login-row > [data-testid="stColumn"]:first-child [data-testid="stButton"] > button:hover {{
+    background: {LOGIN_SWITCH_BTN_BG_HOVER} !important;
+}}
 {row} > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual),
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) {{
     max-width: 42px !important; width: auto !important;
@@ -1365,23 +1404,22 @@ def login_page_css() -> str:
 
 def login_switch_button_css() -> str:
     """CSS do botão ENTRAR/CADASTRAR-SE — injetado após o widget para garantir prioridade."""
+    switch_col = (
+        ".stApp:has(.kahoot-login-switch-marker) "
+        "[data-testid='stColumn']:has(.kahoot-login-switch-marker)"
+    )
     switch_btn = (
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) button, "
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-primary'], "
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-primaryFormSubmit'], "
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-secondary'], "
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stBaseButton-secondaryBorderless']"
+        f"{switch_col} button, "
+        f"{switch_col} [data-testid='stBaseButton-primary'], "
+        f"{switch_col} [data-testid='stBaseButton-primaryFormSubmit'], "
+        f"{switch_col} [data-testid='stBaseButton-secondary'], "
+        f"{switch_col} [data-testid='stBaseButton-secondaryBorderless']"
     )
     switch_wrap = (
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) .stButton, "
-        ".stApp:has(.kahoot-login-switch-marker) "
-        "[data-testid='stColumn']:has(.kahoot-login-switch-marker) [data-testid='stButton']"
+        f"{switch_col} .element-container:has([data-testid='stButton']), "
+        f"{switch_col} .element-container:has(.kahoot-login-switch-marker) + .element-container, "
+        f"{switch_col} .stButton, "
+        f"{switch_col} [data-testid='stButton']"
     )
     return f"""
 .kahoot-login-switch-marker {{
@@ -1393,10 +1431,10 @@ def login_switch_button_css() -> str:
     margin: 0 auto !important;
 }}
 {switch_btn} {{
-    background: transparent !important;
-    background-color: transparent !important;
+    background: {LOGIN_SWITCH_BTN_BG} !important;
+    background-color: {LOGIN_SWITCH_BTN_BG} !important;
     color: #ffffff !important;
-    border: 2px solid #ffffff !important;
+    border: none !important;
     border-radius: 25px !important;
     font-weight: 600 !important;
     letter-spacing: 0.08em !important;
@@ -1406,6 +1444,7 @@ def login_switch_button_css() -> str:
     height: auto !important;
     box-sizing: border-box !important;
     box-shadow: none !important;
+    display: block !important;
 }}
 .stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) [data-testid^="stBaseButton"] p,
 .stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) [data-testid^="stBaseButton"] span,
@@ -1417,10 +1456,10 @@ def login_switch_button_css() -> str:
 }}
 .stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) button:hover,
 .stApp:has(.kahoot-login-switch-marker) [data-testid="stColumn"]:has(.kahoot-login-switch-marker) [data-testid^="stBaseButton"]:hover {{
-    background: rgba(255,255,255,0.12) !important;
-    background-color: rgba(255,255,255,0.12) !important;
+    background: {LOGIN_SWITCH_BTN_BG_HOVER} !important;
+    background-color: {LOGIN_SWITCH_BTN_BG_HOVER} !important;
     color: #ffffff !important;
-    border-color: #ffffff !important;
+    border: none !important;
 }}
 @media (max-width: 768px) {{
     {switch_btn} {{
@@ -1757,22 +1796,31 @@ def inject_login_layout_script() -> None:
                 col.querySelectorAll(
                     'button, [data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"], [data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryBorderless"]'
                 ).forEach((btn) => {
-                    btn.style.setProperty("background", "transparent", "important");
-                    btn.style.setProperty("background-color", "transparent", "important");
+                    btn.style.setProperty("background", "{LOGIN_SWITCH_BTN_BG}", "important");
+                    btn.style.setProperty("background-color", "{LOGIN_SWITCH_BTN_BG}", "important");
                     btn.style.setProperty("color", "#ffffff", "important");
-                    btn.style.setProperty("border", "2px solid #ffffff", "important");
+                    btn.style.setProperty("border", "none", "important");
                     btn.style.setProperty("border-radius", "25px", "important");
                     btn.style.setProperty("padding", "0.75rem 1.5rem", "important");
                     btn.style.setProperty("min-height", "2.75rem", "important");
                     btn.style.setProperty("height", "auto", "important");
                     btn.style.setProperty("width", "100%", "important");
+                    btn.style.setProperty("display", "block", "important");
                     btn.style.setProperty("letter-spacing", "0.08em", "important");
                     btn.style.setProperty("font-weight", "600", "important");
+                    btn.style.setProperty("box-sizing", "border-box", "important");
                     btn.querySelectorAll("p, span, div").forEach((node) => {
                         node.style.setProperty("color", "#ffffff", "important");
                         node.style.setProperty("margin", "0", "important");
                         node.style.setProperty("padding", "0", "important");
                     });
+                });
+                col.querySelectorAll(
+                    '.element-container:has([data-testid="stButton"]), .element-container:has(.kahoot-login-switch-marker) + .element-container, [data-testid="stButton"], .stButton'
+                ).forEach((wrap) => {
+                    wrap.style.setProperty("width", "100%", "important");
+                    wrap.style.setProperty("max-width", "360px", "important");
+                    wrap.style.setProperty("margin", "0 auto", "important");
                 });
             }
 
@@ -1822,7 +1870,7 @@ def inject_login_layout_script() -> None:
             observer.observe(document.body, { childList: true, subtree: true });
         })();
         </script>
-        """,
+        """.replace("{LOGIN_SWITCH_BTN_BG}", LOGIN_SWITCH_BTN_BG),
         unsafe_allow_javascript=True,
     )
 
