@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 import uuid
 from datetime import datetime, timezone
@@ -13,6 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pdfplumber
 import streamlit as st
+import streamlit.components.v1 as components
 
 try:
     import auth_users
@@ -343,10 +345,11 @@ def plot_question_performance(leaderboard, total_questions):
 
 
 # ---------------------------
-# Login
+# Login — split 50/50 (referência visual)
 # ---------------------------
-LOGIN_ACCENT = "#6C63FF"
-LOGIN_ACCENT_DARK = "#5B54E8"
+LOGIN_TEAL = "#458588"
+LOGIN_DARK = "#1d2021"
+LOGIN_INPUT_BG = "#2d3436"
 GOOGLE_ICON_SVG = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E"
     "%3Cpath fill='%23FFC107' d='M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8"
@@ -364,238 +367,229 @@ GOOGLE_ICON_SVG = (
     "%3C/svg%3E"
 )
 
+LOGIN_PAGE_CSS = f"""
+section[data-testid="stSidebar"], header[data-testid="stHeader"], footer {{
+    display: none !important;
+}}
+.stApp {{ background: {LOGIN_DARK} !important; }}
+.main .block-container {{
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}}
+.kahoot-login-marker {{ display: none !important; }}
+.kahoot-login-row {{
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    z-index: 50 !important;
+    align-items: stretch !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"] {{
+    padding: 3.5rem 3rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    min-height: 100vh !important;
+    overflow-y: auto !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child {{
+    background: {LOGIN_TEAL} !important;
+    flex: 0 0 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child {{
+    background: {LOGIN_DARK} !important;
+    flex: 0 0 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] {{
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    flex: 1 1 auto !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"],
+.kahoot-login-row > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{
+    max-width: 360px;
+}}
+.kahoot-left-inner {{ text-align: center; max-width: 320px; }}
+.kahoot-left-inner h2 {{
+    color: #ffffff; font-size: 2.4rem; font-weight: 700;
+    margin: 0 0 1rem; line-height: 1.2;
+    font-family: "Segoe UI", system-ui, sans-serif;
+}}
+.kahoot-left-inner p {{
+    color: rgba(255,255,255,0.95); font-size: 0.95rem; line-height: 1.7;
+    margin: 0 0 2rem; font-family: "Segoe UI", system-ui, sans-serif;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton {{
+    width: 100%; display: flex; justify-content: center;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button {{
+    background: transparent !important;
+    color: #ffffff !important;
+    border: 2px solid #ffffff !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    padding: 0.7rem 2.8rem !important;
+    letter-spacing: 0.08em !important;
+    min-width: 200px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button:hover {{
+    background: rgba(255,255,255,0.12) !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-social-icon) {{
+    max-width: 220px !important; width: auto !important;
+    margin: 0 auto 0.5rem !important; gap: 1rem !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-social-icon) > [data-testid="stColumn"] {{
+    flex: 0 0 auto !important; width: auto !important; max-width: none !important;
+    min-height: unset !important; padding: 0 !important;
+    display: flex !important; align-items: center !important; justify-content: center !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-social-icon) > [data-testid="stColumn"]:nth-child(2) {{
+    position: relative !important;
+    width: 42px !important; height: 42px !important;
+    min-height: 42px !important; flex: 0 0 42px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-social-icon) > [data-testid="stColumn"]:nth-child(2) > [data-testid="stVerticalBlock"] {{
+    position: relative !important;
+    width: 42px !important; height: 42px !important;
+    min-height: 42px !important; justify-content: flex-start !important;
+}}
+.kahoot-google-visual {{
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 1px solid #3d4f66; background-color: #ffffff;
+    background-image: url("{GOOGLE_ICON_SVG}");
+    background-size: 22px; background-repeat: no-repeat; background-position: center;
+    margin: 0 auto; pointer-events: none;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-social-icon) > [data-testid="stColumn"]:nth-child(2) .element-container:has(
+    iframe[title="streamlit_oauth.authorize_button"]
+) {{
+    position: absolute !important; top: 0 !important; left: 0 !important;
+    width: 42px !important; height: 42px !important;
+    opacity: 0 !important; z-index: 2 !important;
+    margin: 0 !important; padding: 0 !important; overflow: visible !important;
+    border: none !important; background: transparent !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-social-icon) iframe[title="streamlit_oauth.authorize_button"] {{
+    width: 42px !important; height: 42px !important; border: none !important;
+    margin: 0 !important; cursor: pointer !important;
+}}
+.kahoot-form-wrap {{ width: 100%; max-width: 360px; margin: 0 auto; }}
+.kahoot-form-title {{
+    color: #c8d6e0; font-size: 1.85rem; font-weight: 700;
+    text-align: center; margin: 0 0 1.25rem;
+    font-family: "Segoe UI", system-ui, sans-serif;
+}}
+.kahoot-form-sub {{
+    color: #7f8c9a; font-size: 0.85rem; text-align: center; margin: 0 0 1rem;
+}}
+.kahoot-social-icon {{
+    width: 42px; height: 42px; border-radius: 50%;
+    background: {LOGIN_INPUT_BG}; border: 1px solid #3d4f66;
+    color: #aabbc8; font-size: 0.85rem; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto;
+}}
+.kahoot-or-line {{
+    display: flex; align-items: center; gap: 0.75rem;
+    margin: 1.25rem 0; color: #6b7c93; font-size: 0.82rem;
+}}
+.kahoot-or-line::before, .kahoot-or-line::after {{
+    content: ""; flex: 1; height: 1px; background: #3d4f66;
+}}
+.kahoot-footnote {{
+    color: #6b7c93; font-size: 0.78rem; text-align: center;
+    margin-top: 1.25rem; line-height: 1.5;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child label {{
+    color: #aabbc8 !important; font-weight: 600 !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child input {{
+    background: {LOGIN_INPUT_BG} !important;
+    border: 1px solid #3d4f66 !important;
+    color: #e8edf2 !important;
+    border-radius: 8px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child .stTextInput > div > div {{
+    background: {LOGIN_INPUT_BG} !important;
+    border: 1px solid #3d4f66 !important;
+    border-radius: 8px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button {{
+    background: {LOGIN_TEAL} !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    padding: 0.75rem 1.5rem !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button:hover {{
+    background: #3d7a72 !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child .stButton > button[kind="secondary"] {{
+    background: {LOGIN_INPUT_BG} !important;
+    color: #c5d0dc !important;
+    border: 1px solid #3d4f66 !important;
+    border-radius: 25px !important;
+}}
+@media (max-width: 768px) {{
+    .kahoot-login-row {{
+        position: relative !important;
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: 100vh !important;
+    }}
+    .kahoot-login-row > [data-testid="stColumn"] {{
+        min-height: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 auto !important;
+    }}
+}}
+"""
 
-def inject_login_page_css():
-    st.markdown(
+
+def _apply_login_styles_in_parent():
+    css_json = json.dumps(LOGIN_PAGE_CSS)
+    components.html(
         f"""
-        <style>
-        section[data-testid="stSidebar"] {{ display: none; }}
-        header[data-testid="stHeader"] {{ background: transparent; }}
-        .stApp {{
-            background: linear-gradient(160deg, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
-        }}
-        .block-container:has(#quiz-login-active) {{
-            padding-top: 2.5rem;
-            padding-bottom: 3rem;
-            max-width: 920px;
-        }}
-        .login-brand {{
-            text-align: center;
-            margin-bottom: 1.75rem;
-        }}
-        .login-brand h1 {{
-            font-size: 2rem;
-            font-weight: 800;
-            margin: 0;
-            color: #1e1b4b;
-            letter-spacing: -0.02em;
-        }}
-        .login-brand p {{
-            margin: 0.4rem 0 0;
-            color: #64748b;
-            font-size: 1rem;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type {{
-            background: #ffffff;
-            border-radius: 22px;
-            overflow: hidden;
-            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
-            border: 1px solid rgba(148, 163, 184, 0.25);
-            min-height: 520px;
-            align-items: stretch !important;
-            gap: 0 !important;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:first-child {{
-            background: linear-gradient(155deg, {LOGIN_ACCENT} 0%, #7c3aed 55%, {LOGIN_ACCENT_DARK} 100%);
-            padding: 3rem 2rem !important;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child {{
-            background: #ffffff;
-            padding: 2.75rem 2.5rem 2.25rem !important;
-        }}
-        .login-left-inner {{
-            min-height: 420px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            padding: 0 0.5rem;
-        }}
-        .login-left-inner h2 {{
-            color: #ffffff;
-            font-size: 2.1rem;
-            font-weight: 800;
-            margin: 0 0 0.85rem;
-            line-height: 1.15;
-            letter-spacing: -0.02em;
-        }}
-        .login-left-inner p {{
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 0.98rem;
-            line-height: 1.6;
-            margin: 0;
-            max-width: 270px;
-        }}
-        .login-left-bg-top {{
-            background: linear-gradient(155deg, {LOGIN_ACCENT} 0%, #7c3aed 55%, {LOGIN_ACCENT_DARK} 100%);
-            margin: -1rem -0.75rem 0 -1rem;
-            padding: 2.5rem 1.5rem 1.5rem;
-            border-radius: 22px 0 0 0;
-        }}
-        .login-left-bg-bottom {{
-            background: linear-gradient(155deg, {LOGIN_ACCENT_DARK} 0%, #7c3aed 100%);
-            margin: 0 -0.75rem -1rem -1rem;
-            padding: 0.5rem 1.5rem 2.5rem;
-            border-radius: 0 0 0 22px;
-        }}
-        .login-form-title {{
-            color: #1e1b4b;
-            font-size: 1.85rem;
-            font-weight: 800;
-            margin: 0 0 1.5rem;
-            text-align: center;
-            letter-spacing: -0.02em;
-        }}
-        .login-form-hint {{
-            color: #64748b;
-            font-size: 0.88rem;
-            text-align: center;
-            margin: 0 0 1rem;
-        }}
-        .login-or-line {{
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            margin: 1.1rem 0 1.25rem;
-            color: #94a3b8;
-            font-size: 0.8rem;
-        }}
-        .login-or-line::before,
-        .login-or-line::after {{
-            content: "";
-            flex: 1;
-            height: 1px;
-            background: #e2e8f0;
-        }}
-        .google-oauth-center {{
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 0.25rem 0 0.15rem;
-        }}
-        .block-container:has(#quiz-login-active) .google-oauth-center .stButton {{
-            display: flex;
-            justify-content: center;
-        }}
-        .block-container:has(#quiz-login-active) .google-oauth-center .stButton > button {{
-            width: 56px !important;
-            height: 56px !important;
-            min-height: 56px !important;
-            border-radius: 50% !important;
-            padding: 0 !important;
-            font-size: 0 !important;
-            color: transparent !important;
-            background-color: #ffffff !important;
-            background-image: url("{GOOGLE_ICON_SVG}") !important;
-            background-repeat: no-repeat !important;
-            background-position: center !important;
-            background-size: 28px 28px !important;
-            border: 1px solid #e2e8f0 !important;
-            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
-        }}
-        .block-container:has(#quiz-login-active) .google-oauth-center .stButton > button:hover {{
-            border-color: #cbd5e1 !important;
-            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
-            transform: translateY(-1px);
-        }}
-        .google-oauth-label {{
-            margin-top: 0.55rem;
-            color: #64748b;
-            font-size: 0.78rem;
-            text-align: center;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:first-child .stButton > button {{
-            background: transparent !important;
-            color: #ffffff !important;
-            border: 2px solid rgba(255, 255, 255, 0.95) !important;
-            border-radius: 999px !important;
-            font-weight: 700 !important;
-            letter-spacing: 0.08em !important;
-            padding: 0.7rem 2.75rem !important;
-            margin-top: 2rem;
-            min-width: 200px;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:first-child .stButton > button:hover {{
-            background: rgba(255, 255, 255, 0.14) !important;
-            border-color: #ffffff !important;
-            color: #ffffff !important;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child .stButton > button[kind="primary"],
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child [data-testid="stFormSubmitButton"] > button {{
-            background: {LOGIN_ACCENT} !important;
-            border: none !important;
-            border-radius: 999px !important;
-            font-weight: 700 !important;
-            letter-spacing: 0.05em !important;
-            padding: 0.72rem 1.5rem !important;
-            box-shadow: 0 8px 20px rgba(108, 99, 255, 0.35);
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child .stButton > button[kind="primary"]:hover,
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child [data-testid="stFormSubmitButton"] > button:hover {{
-            background: {LOGIN_ACCENT_DARK} !important;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child .stButton > button[kind="secondary"] {{
-            background: #f8fafc !important;
-            color: #334155 !important;
-            border: 1px solid #e2e8f0 !important;
-            border-radius: 999px !important;
-            font-weight: 600 !important;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child input {{
-            border-radius: 12px !important;
-            border: 1px solid #e2e8f0 !important;
-            background: #f8fafc !important;
-            padding: 0.65rem 0.9rem !important;
-        }}
-        .block-container:has(#quiz-login-active)
-        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
-        > [data-testid="column"]:last-child .stTextInput > div > div {{
-            background: #f8fafc;
-            border-radius: 12px;
-            border: 1px solid #e2e8f0;
-        }}
-        .login-footnote {{
-            color: #94a3b8;
-            font-size: 0.76rem;
-            text-align: center;
-            margin: 1.25rem 0 0;
-            line-height: 1.5;
-        }}
-        </style>
+        <script>
+        (function() {{
+            function applyLoginLayout() {{
+                const doc = window.parent.document;
+                let style = doc.getElementById("kahoot-login-style");
+                if (!style) {{
+                    style = doc.createElement("style");
+                    style.id = "kahoot-login-style";
+                    doc.head.appendChild(style);
+                }}
+                style.textContent = {css_json};
+                doc.querySelectorAll(".kahoot-login-marker").forEach((marker) => {{
+                    const row = marker.closest('[data-testid="stHorizontalBlock"]');
+                    if (row) row.classList.add("kahoot-login-row");
+                }});
+            }}
+            applyLoginLayout();
+            setTimeout(applyLoginLayout, 50);
+            setTimeout(applyLoginLayout, 300);
+        }})();
+        </script>
         """,
-        unsafe_allow_html=True,
+        height=0,
     )
 
 
@@ -637,26 +631,43 @@ def _handle_unified_google(profile: dict):
 def render_google_icon_login(key: str) -> dict | None:
     if not google_oauth_configured():
         return None
-    st.markdown('<div class="google-oauth-center">', unsafe_allow_html=True)
-    profile = render_google_login_button(
-        "G",
+    return render_google_login_button(
+        "",
         key=key,
         role_hint="unified",
         use_container_width=False,
     )
-    st.markdown("</div>", unsafe_allow_html=True)
+
+
+def _render_social_google_row(oauth_key: str) -> dict | None:
+    profile = None
+    s1, s2, s3 = st.columns([1, 1, 1], gap="small")
+    with s1:
+        st.markdown('<div class="kahoot-social-icon">f</div>', unsafe_allow_html=True)
+    with s2:
+        st.markdown('<div class="kahoot-google-visual"></div>', unsafe_allow_html=True)
+        if google_oauth_configured():
+            profile = render_google_icon_login(oauth_key)
+    with s3:
+        st.markdown('<div class="kahoot-social-icon">in</div>', unsafe_allow_html=True)
     return profile
 
 
 def render_login_signup_panel():
-    st.markdown('<p class="login-form-title">Criar conta</p>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="login-form-hint">Informe seu nome para participar dos quizzes.</p>',
-        unsafe_allow_html=True,
-    )
+    st.markdown('<div class="kahoot-form-wrap">', unsafe_allow_html=True)
+    st.markdown('<p class="kahoot-form-title">Criar conta</p>', unsafe_allow_html=True)
+
+    if google_oauth_configured():
+        profile = _render_social_google_row("oauth_signup")
+        if profile:
+            _handle_unified_google(profile)
+        st.markdown('<p class="kahoot-form-sub">ou use o Google para se registrar</p>', unsafe_allow_html=True)
+        st.markdown('<div class="kahoot-or-line">ou use seu nome</div>', unsafe_allow_html=True)
+    else:
+        render_oauth_setup_help()
 
     with st.form("register_on_login"):
-        name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
+        name = st.text_input("Nome", placeholder="Nome completo")
         submitted = st.form_submit_button("CADASTRAR-SE", use_container_width=True, type="primary")
         if submitted:
             ok, _ = _register_student_name(name)
@@ -665,16 +676,23 @@ def render_login_signup_panel():
                 st.session_state.current_user = None
                 st.rerun()
 
+    st.markdown(
+        '<p class="kahoot-footnote">Já tem conta? Clique em <b>ENTRAR</b> no painel esquerdo.</p>'
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
 
 def render_login_signin_panel():
-    st.markdown('<p class="login-form-title">Entrar</p>', unsafe_allow_html=True)
+    st.markdown('<div class="kahoot-form-wrap">', unsafe_allow_html=True)
+    st.markdown('<p class="kahoot-form-title">Entrar</p>', unsafe_allow_html=True)
 
     if google_oauth_configured():
-        profile = render_google_icon_login("oauth_signin")
+        profile = _render_social_google_row("oauth_signin")
         if profile:
             _handle_unified_google(profile)
-        st.markdown('<p class="google-oauth-label">Entrar com Google</p>', unsafe_allow_html=True)
-        st.markdown('<div class="login-or-line">ou</div>', unsafe_allow_html=True)
+        st.markdown('<p class="kahoot-form-sub">ou use o Google para acessar</p>', unsafe_allow_html=True)
+        st.markdown('<div class="kahoot-or-line">ou</div>', unsafe_allow_html=True)
     else:
         render_oauth_setup_help()
         if legacy_password_enabled():
@@ -709,62 +727,51 @@ def render_login_signin_panel():
         st.rerun()
 
     st.markdown(
-        f'<p class="login-footnote">O administrador ({auth_users.get_system_admin_email()}) '
-        "libera o acesso de professores na aba Aprovações.</p>",
+        f'<p class="kahoot-footnote">O administrador ({auth_users.get_system_admin_email()}) '
+        "libera professores na aba Aprovações.</p></div>",
         unsafe_allow_html=True,
     )
 
 
 def render_login():
-    inject_login_page_css()
-    st.markdown('<span id="quiz-login-active"></span>', unsafe_allow_html=True)
     view = st.session_state.auth_view
+    if view == "signup":
+        left_title = "Bem-vindo de volta!"
+        left_desc = (
+            "Para continuar no quiz, entre com sua conta Google ou pelo nome cadastrado."
+        )
+        switch_label = "ENTRAR"
+        switch_key = "go_signin"
+        switch_target = "signin"
+    else:
+        left_title = "Novo por aqui?"
+        left_desc = "Crie sua conta em segundos e comece a responder os quizzes agora mesmo."
+        switch_label = "CADASTRAR-SE"
+        switch_key = "go_signup"
+        switch_target = "signup"
 
-    st.markdown(
-        '<div class="login-brand">'
-        "<h1>🎮 Quiz Interativo</h1>"
-        "<p>Quizzes e provas em tempo real</p>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-    col_left, col_right = st.columns([42, 58], gap="small")
+    st.markdown(f"<style>{LOGIN_PAGE_CSS}</style>", unsafe_allow_html=True)
+    col_left, col_right = st.columns(2, gap="small")
 
     with col_left:
-        if view == "signup":
-            st.markdown(
-                '<div class="login-left-bg-top"><div class="login-left-inner">'
-                "<h2>Bem-vindo de volta!</h2>"
-                "<p>Já tem cadastro? Entre com Google ou pelo nome cadastrado.</p>"
-                "</div></div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown('<div class="login-left-bg-bottom">', unsafe_allow_html=True)
-            _, btn_col, _ = st.columns([1, 2.2, 1])
-            with btn_col:
-                if st.button("ENTRAR", key="go_signin", use_container_width=True):
-                    st.session_state.auth_view = "signin"
-                    st.rerun()
-        else:
-            st.markdown(
-                '<div class="login-left-bg-top"><div class="login-left-inner">'
-                "<h2>Novo por aqui?</h2>"
-                "<p>Primeiro acesso? Cadastre seu nome e comece a responder os quizzes.</p>"
-                "</div></div>",
-                unsafe_allow_html=True,
-            )
-            st.markdown('<div class="login-left-bg-bottom">', unsafe_allow_html=True)
-            _, btn_col, _ = st.columns([1, 2.8, 1])
-            with btn_col:
-                if st.button("CADASTRAR-SE", key="go_signup", use_container_width=True):
-                    st.session_state.auth_view = "signup"
-                    st.rerun()
+        st.markdown('<span class="kahoot-login-marker"></span>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="kahoot-left-inner">'
+            f"<h2>{left_title}</h2>"
+            f"<p>{left_desc}</p></div>",
+            unsafe_allow_html=True,
+        )
+        if st.button(switch_label, key=switch_key, use_container_width=False):
+            st.session_state.auth_view = switch_target
+            st.rerun()
 
     with col_right:
         if view == "signup":
             render_login_signup_panel()
         else:
             render_login_signin_panel()
+
+    _apply_login_styles_in_parent()
 
 
 def render_sidebar_logout():
