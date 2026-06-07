@@ -774,19 +774,42 @@ def render_login():
     _apply_login_styles_in_parent()
 
 
-def render_sidebar_logout():
+def _session_user_display() -> tuple[str, str, str | None]:
     user = st.session_state.get("current_user")
     if user:
         role_label = "Professor" if user.get("role") == "professor" else "Aluno"
         name = user.get("name") or user.get("email") or role_label
-        st.sidebar.caption(f"**{name}** ({role_label})")
-        if user.get("email"):
-            st.sidebar.caption(user["email"])
-    else:
-        role_label = "Aluno" if st.session_state.role == "student" else "Visitante"
-        st.sidebar.caption(f"Modo **{role_label}** (sem conta Google)")
-    if st.sidebar.button("Sair", use_container_width=True):
+        return name, role_label, user.get("email")
+
+    role_label = "Aluno" if st.session_state.role == "student" else "Visitante"
+    name = st.session_state.get("preferred_student_name") or st.session_state.get("current_student_name")
+    if name:
+        return name, role_label, None
+    return role_label, role_label, None
+
+
+def render_session_controls():
+    """Barra de sessão + logout visível para professor, aluno e visitante."""
+    name, role_label, email = _session_user_display()
+
+    st.sidebar.caption(f"**{name}** ({role_label})")
+    if email:
+        st.sidebar.caption(email)
+    elif not st.session_state.get("current_user"):
+        st.sidebar.caption("Sem conta Google vinculada.")
+    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=True):
         logout()
+
+    info_col, btn_col = st.columns([6, 1])
+    with info_col:
+        if email:
+            st.caption(f"Conectado como **{name}** · {role_label} · {email}")
+        else:
+            st.caption(f"Conectado como **{name}** · {role_label}")
+    with btn_col:
+        if st.button("Sair", key="logout_top", use_container_width=True):
+            logout()
+    st.divider()
 
 
 def render_admin_approvals_tab():
@@ -1177,7 +1200,6 @@ def render_exams_tab():
 
 def render_professor_panel():
     st.title("👨‍🏫 Painel do Professor")
-    render_sidebar_logout()
 
     current_user = st.session_state.get("current_user") or {}
     show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
@@ -1375,7 +1397,6 @@ def render_student_register_sidebar():
 
 def render_student_panel():
     st.title("👨‍🎓 Área do Aluno")
-    render_sidebar_logout()
     render_student_register_sidebar()
 
     tab_quiz, tab_prova = st.tabs(["🎮 Quiz", "📝 Provas"])
@@ -1749,6 +1770,8 @@ def main():
     if st.session_state.role is None:
         render_login()
         return
+
+    render_session_controls()
 
     if st.session_state.role == "professor":
         render_professor_panel()
