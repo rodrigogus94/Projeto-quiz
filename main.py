@@ -567,35 +567,51 @@ SESSION_BAR_CSS = f"""
 [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) {{
     background: {LOGIN_INPUT_BG} !important;
     border-color: #3d4f66 !important;
-    margin-bottom: 1rem !important;
+    margin-bottom: 0.75rem !important;
+    padding-top: 0.35rem !important;
+    padding-bottom: 0.35rem !important;
 }}
-.kahoot-session-meta {{ display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) [data-testid="stHorizontalBlock"] {{
+    align-items: center !important;
+}}
+.kahoot-session-meta {{ display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }}
 .kahoot-session-name {{
-    color: #e8edf2; font-size: 1rem; font-weight: 700; line-height: 1.3;
+    color: #e8edf2; font-size: 0.92rem; font-weight: 700; line-height: 1.25;
 }}
 .kahoot-session-email {{
-    color: #8fa3b5; font-size: 0.82rem; line-height: 1.3;
+    color: #8fa3b5; font-size: 0.78rem; line-height: 1.25;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }}
 .kahoot-session-role {{
-    display: inline-block; width: fit-content; margin-top: 0.15rem;
-    padding: 0.18rem 0.65rem; border-radius: 999px; font-size: 0.72rem;
+    display: inline-block; width: fit-content; margin-top: 0.1rem;
+    padding: 0.12rem 0.5rem; border-radius: 999px; font-size: 0.65rem;
     font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
     background: rgba(69, 133, 136, 0.22); color: #9fd4d0; border: 1px solid #458588;
 }}
 .kahoot-session-role--student {{
     background: rgba(99, 132, 168, 0.2); color: #b8cce0; border-color: #4a6278;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .stButton > button {{
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .kahoot-logout-btn {{
+    display: flex !important;
+    justify-content: flex-end !important;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .kahoot-logout-btn .stButton {{
+    width: auto !important;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .kahoot-logout-btn .stButton > button {{
     background: transparent !important;
     color: #f0a8a8 !important;
-    border: 1.5px solid #c45555 !important;
+    border: 1px solid #c45555 !important;
     border-radius: 999px !important;
     font-weight: 600 !important;
-    padding: 0.45rem 1.1rem !important;
-    min-height: 2.4rem !important;
+    font-size: 0.75rem !important;
+    padding: 0.15rem 0.65rem !important;
+    min-height: 1.6rem !important;
+    height: 1.6rem !important;
+    width: auto !important;
+    min-width: 3.4rem !important;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .stButton > button:hover {{
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .kahoot-logout-btn .stButton > button:hover {{
     background: rgba(196, 85, 85, 0.16) !important;
     border-color: #e57373 !important;
     color: #ffcdd2 !important;
@@ -609,12 +625,21 @@ section[data-testid="stSidebar"] .kahoot-sidebar-account .kahoot-session-name {{
 section[data-testid="stSidebar"] .kahoot-sidebar-account .kahoot-session-email {{
     color: #8fa3b5; font-size: 0.78rem; margin-top: 0.15rem;
 }}
+section[data-testid="stSidebar"] .kahoot-sidebar-logout .stButton {{
+    width: auto !important;
+}}
 section[data-testid="stSidebar"] .kahoot-sidebar-logout .stButton > button {{
     background: transparent !important;
     color: #f0a8a8 !important;
-    border: 1.5px solid #c45555 !important;
+    border: 1px solid #c45555 !important;
     border-radius: 999px !important;
     font-weight: 600 !important;
+    font-size: 0.75rem !important;
+    padding: 0.15rem 0.65rem !important;
+    min-height: 1.6rem !important;
+    height: 1.6rem !important;
+    width: auto !important;
+    min-width: 3.4rem !important;
 }}
 section[data-testid="stSidebar"] .kahoot-sidebar-logout .stButton > button:hover {{
     background: rgba(196, 85, 85, 0.16) !important;
@@ -867,7 +892,7 @@ def render_session_controls():
         email_html = ""
 
     with st.container(border=True):
-        meta_col, btn_col = st.columns([5, 1], gap="medium")
+        meta_col, btn_col = st.columns([9, 1], gap="small")
         with meta_col:
             st.markdown(
                 f'<div class="kahoot-session-meta">'
@@ -878,8 +903,10 @@ def render_session_controls():
                 unsafe_allow_html=True,
             )
         with btn_col:
-            if st.button("Sair", key="logout_top", use_container_width=True, type="secondary"):
+            st.markdown('<div class="kahoot-logout-btn">', unsafe_allow_html=True)
+            if st.button("Sair", key="logout_top", use_container_width=False, type="secondary"):
                 logout()
+            st.markdown("</div>", unsafe_allow_html=True)
 
     sidebar_email = f'<div class="kahoot-session-email">{email}</div>' if email else ""
     st.sidebar.markdown(
@@ -891,7 +918,7 @@ def render_session_controls():
         unsafe_allow_html=True,
     )
     st.sidebar.markdown('<div class="kahoot-sidebar-logout">', unsafe_allow_html=True)
-    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=True, type="secondary"):
+    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=False, type="secondary"):
         logout()
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
     st.sidebar.divider()
