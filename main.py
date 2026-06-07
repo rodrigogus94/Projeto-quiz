@@ -563,6 +563,67 @@ section[data-testid="stSidebar"], header[data-testid="stHeader"], footer {{
 """
 
 
+SESSION_BAR_CSS = f"""
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) {{
+    background: {LOGIN_INPUT_BG} !important;
+    border-color: #3d4f66 !important;
+    margin-bottom: 1rem !important;
+}}
+.kahoot-session-meta {{ display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }}
+.kahoot-session-name {{
+    color: #e8edf2; font-size: 1rem; font-weight: 700; line-height: 1.3;
+}}
+.kahoot-session-email {{
+    color: #8fa3b5; font-size: 0.82rem; line-height: 1.3;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}}
+.kahoot-session-role {{
+    display: inline-block; width: fit-content; margin-top: 0.15rem;
+    padding: 0.18rem 0.65rem; border-radius: 999px; font-size: 0.72rem;
+    font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+    background: rgba(69, 133, 136, 0.22); color: #9fd4d0; border: 1px solid #458588;
+}}
+.kahoot-session-role--student {{
+    background: rgba(99, 132, 168, 0.2); color: #b8cce0; border-color: #4a6278;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .stButton > button {{
+    background: transparent !important;
+    color: #f0a8a8 !important;
+    border: 1.5px solid #c45555 !important;
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+    padding: 0.45rem 1.1rem !important;
+    min-height: 2.4rem !important;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-meta) .stButton > button:hover {{
+    background: rgba(196, 85, 85, 0.16) !important;
+    border-color: #e57373 !important;
+    color: #ffcdd2 !important;
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-account {{
+    padding: 0.25rem 0 0.75rem;
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-account .kahoot-session-name {{
+    color: #e8edf2; font-size: 0.95rem; font-weight: 700;
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-account .kahoot-session-email {{
+    color: #8fa3b5; font-size: 0.78rem; margin-top: 0.15rem;
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-logout .stButton > button {{
+    background: transparent !important;
+    color: #f0a8a8 !important;
+    border: 1.5px solid #c45555 !important;
+    border-radius: 999px !important;
+    font-weight: 600 !important;
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-logout .stButton > button:hover {{
+    background: rgba(196, 85, 85, 0.16) !important;
+    border-color: #e57373 !important;
+    color: #ffcdd2 !important;
+}}
+"""
+
+
 def _apply_login_styles_in_parent():
     css_json = json.dumps(LOGIN_PAGE_CSS)
     components.html(
@@ -791,25 +852,49 @@ def _session_user_display() -> tuple[str, str, str | None]:
 def render_session_controls():
     """Barra de sessão + logout visível para professor, aluno e visitante."""
     name, role_label, email = _session_user_display()
+    if role_label == "Professor":
+        role_badge_class = "kahoot-session-role"
+    else:
+        role_badge_class = "kahoot-session-role kahoot-session-role--student"
 
-    st.sidebar.caption(f"**{name}** ({role_label})")
+    st.markdown(f"<style>{SESSION_BAR_CSS}</style>", unsafe_allow_html=True)
+
     if email:
-        st.sidebar.caption(email)
+        email_html = f'<div class="kahoot-session-email">{email}</div>'
     elif not st.session_state.get("current_user"):
-        st.sidebar.caption("Sem conta Google vinculada.")
-    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=True):
-        logout()
+        email_html = '<div class="kahoot-session-email">Sem conta Google vinculada</div>'
+    else:
+        email_html = ""
 
-    info_col, btn_col = st.columns([6, 1])
-    with info_col:
-        if email:
-            st.caption(f"Conectado como **{name}** · {role_label} · {email}")
-        else:
-            st.caption(f"Conectado como **{name}** · {role_label}")
-    with btn_col:
-        if st.button("Sair", key="logout_top", use_container_width=True):
-            logout()
-    st.divider()
+    with st.container(border=True):
+        meta_col, btn_col = st.columns([5, 1], gap="medium")
+        with meta_col:
+            st.markdown(
+                f'<div class="kahoot-session-meta">'
+                f'<div class="kahoot-session-name">{name}</div>'
+                f"{email_html}"
+                f'<span class="{role_badge_class}">{role_label}</span>'
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with btn_col:
+            if st.button("Sair", key="logout_top", use_container_width=True, type="secondary"):
+                logout()
+
+    sidebar_email = f'<div class="kahoot-session-email">{email}</div>' if email else ""
+    st.sidebar.markdown(
+        f'<div class="kahoot-sidebar-account">'
+        f'<div class="kahoot-session-name">{name}</div>'
+        f"{sidebar_email}"
+        f'<span class="{role_badge_class}">{role_label}</span>'
+        f"</div>",
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown('<div class="kahoot-sidebar-logout">', unsafe_allow_html=True)
+    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=True, type="secondary"):
+        logout()
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
+    st.sidebar.divider()
 
 
 def render_admin_approvals_tab():
