@@ -186,6 +186,17 @@ def classification_badge_colors() -> dict[str, str]:
     return CLASSIFICATION_BADGE_COLORS[get_resolved_theme()]
 
 
+def get_theme_colors() -> dict[str, str]:
+    """Paleta unificada do tema resolvido (CSS + gráficos + badges)."""
+    theme = get_resolved_theme()
+    merged: dict[str, str] = {}
+    merged.update(THEME_COLORS[theme])
+    merged.update(THEME_TOKENS[theme])
+    merged.update(CHART_PALETTES[theme])
+    merged.update(CLASSIFICATION_BADGE_COLORS[theme])
+    return merged
+
+
 def style_matplotlib_figure(fig, ax, *, grid: bool = True) -> None:
     """Aplica cores do tema atual a uma figura Matplotlib."""
     pal = chart_palette()
@@ -480,22 +491,95 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div {
 [data-testid^="stAlertContent"] label {
     color: inherit !important;
 }
-[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] label,
-[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] label span,
-[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] label p,
-[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] div[role="radiogroup"] {
+[data-testid="stRadio"] div[role="radiogroup"] > label {
+    padding: 0.42rem 0.7rem !important;
+    margin: 0.12rem 0 !important;
+    border-radius: 0.5rem !important;
+    border: 1px solid transparent !important;
+    background-color: transparent !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease !important;
+}
+[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked),
+[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] {
+    background-color: color-mix(in srgb, var(--primary-color) 12%, var(--background-color)) !important;
+    border-color: color-mix(in srgb, var(--primary-color) 38%, transparent) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked),
+section[data-testid="stSidebar"] [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] {
+    background-color: color-mix(in srgb, var(--primary-color) 15%, var(--secondary-background-color)) !important;
+    border-color: color-mix(in srgb, var(--primary-color) 42%, transparent) !important;
+}
+[data-testid="stRadio"] label,
+[data-testid="stRadio"] label span,
+[data-testid="stRadio"] label p,
+[data-testid="stRadio"] div[role="radiogroup"] {
     color: var(--text-color) !important;
+}
+section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) span,
+section[data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="true"] span,
+section[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) p,
+section[data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="true"] p {
+    font-weight: 600 !important;
+}
+[data-testid="stRadio"] input[type="radio"] {
+    accent-color: var(--primary-color) !important;
 }
 [data-testid="stForm"] {
     border: 1px solid var(--kahoot-border-strong) !important;
-    border-radius: 0.5rem !important;
-    padding: 0.75rem !important;
+    border-radius: 0.65rem !important;
+    padding: 1rem 1.1rem !important;
     background-color: var(--background-color) !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
 }
 [data-testid="stForm"] label,
 [data-testid="stForm"] p,
-[data-testid="stForm"] span {
+[data-testid="stForm"] span,
+[data-testid="stForm"] [data-testid="stWidgetLabel"] {
     color: var(--text-color) !important;
+}
+[data-testid="stForm"] [data-testid="stTextInput"] > div > div,
+[data-testid="stForm"] [data-testid="stTextArea"] > div > div,
+[data-testid="stForm"] [data-testid="stNumberInput"] > div > div,
+[data-testid="stForm"] [data-testid="stSelectbox"] [data-baseweb="select"] {
+    background-color: var(--background-color) !important;
+    border-color: var(--kahoot-border-strong) !important;
+}
+[data-testid="stFormSubmitButton"] > button {
+    border-radius: 0.5rem !important;
+}
+[data-testid="stCheckbox"] label span,
+[data-testid="stCheckbox"] label p,
+[data-testid="stCheckbox"] [data-testid="stWidgetLabel"] {
+    color: var(--text-color) !important;
+}
+[data-testid="stCheckbox"] input[type="checkbox"] {
+    accent-color: var(--primary-color) !important;
+}
+[data-testid="stProgress"] > div > div > div {
+    background-color: var(--primary-color) !important;
+}
+[data-testid="stProgress"] > div > div {
+    background-color: var(--secondary-background-color) !important;
+}
+[data-testid="stSpinner"] > div {
+    border-top-color: var(--primary-color) !important;
+}
+[data-testid="stDataFrame"] {
+    overflow: hidden !important;
+}
+[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
+    border-radius: 0.45rem !important;
+}
+[data-testid="stDataFrame"] ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+[data-testid="stDataFrame"] ::-webkit-scrollbar-thumb {
+    background: var(--kahoot-border-strong);
+    border-radius: 4px;
+}
+[data-testid="stDataFrame"] ::-webkit-scrollbar-track {
+    background: var(--secondary-background-color);
 }
 section[data-testid="stSidebar"] .stButton > button[kind="secondary"],
 section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]),
@@ -699,9 +783,37 @@ def inject_theme_css() -> None:
                     }});
                 }});
             }}
+            function readThemeVar(name) {{
+                return getComputedStyle(document.documentElement)
+                    .getPropertyValue(name)
+                    .trim();
+            }}
+            function paintDataFrameContainers() {{
+                const bg = readThemeVar("--background-color");
+                const text = readThemeVar("--text-color");
+                const secondary = readThemeVar("--secondary-background-color");
+                if (!bg) return;
+                document.querySelectorAll('[data-testid="stDataFrame"]').forEach((frame) => {{
+                    frame.style.backgroundColor = bg;
+                    frame.style.color = text;
+                    frame.querySelectorAll('[data-testid="stDataFrameResizable"], [data-testid="glideDataEditor"]').forEach((el) => {{
+                        el.style.backgroundColor = bg;
+                        el.style.color = text;
+                    }});
+                    frame.querySelectorAll('div:not(:has(canvas))').forEach((div) => {{
+                        if (div.closest('[data-testid="stDataFrame"]') === frame) {{
+                            div.style.backgroundColor = secondary || bg;
+                            div.style.color = text;
+                        }}
+                    }});
+                }});
+            }}
             paintSidebarChromeButtons();
+            paintDataFrameContainers();
             setTimeout(paintSidebarChromeButtons, 50);
+            setTimeout(paintDataFrameContainers, 50);
             setTimeout(paintSidebarChromeButtons, 300);
+            setTimeout(paintDataFrameContainers, 300);
         }})();
         </script>
         """,
@@ -716,6 +828,588 @@ def apply_ui_theme() -> None:
 
 def finalize_ui_theme() -> None:
     inject_theme_css()
+
+
+BRAND_TEAL = "#458588"
+
+GOOGLE_ICON_SVG = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E"
+    "%3Cpath fill='%23FFC107' d='M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8"
+    "-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657"
+    "C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20"
+    "c0-1.341-.138-2.65-.389-3.916z'/%3E"
+    "%3Cpath fill='%23FF3D00' d='m6.306 14.691 6.571 4.819C14.655 15.108 18.961 12 24 12"
+    "c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4"
+    " 16.318 4 9.656 8.337 6.306 14.691z'/%3E"
+    "%3Cpath fill='%234CAF50' d='M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238"
+    "C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025"
+    "C9.505 39.556 16.227 44 24 44z'/%3E"
+    "%3Cpath fill='%231976D2' d='M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571"
+    "l6.19 5.238C42.022 35.026 44 30.038 44 24c0-1.341-.138-2.65-.389-3.917z'/%3E"
+    "%3C/svg%3E"
+)
+
+def login_page_css() -> str:
+    return f"""
+.stApp:has(.kahoot-login-marker) section[data-testid="stSidebar"],
+.stApp:has(.kahoot-login-marker) footer {{
+    display: none !important;
+}}
+.stApp:has(.kahoot-login-marker) header[data-testid="stHeader"] {{
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    visibility: hidden !important;
+}}
+.stApp:has(.kahoot-login-marker) .main {{
+    padding-top: 0 !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stDecoration"] {{
+    display: none !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) {{
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    border: none !important;
+}}
+.stApp:has(.kahoot-login-marker) .main .block-container {{
+    padding: 0 !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+}}
+.kahoot-login-marker {{ display: none !important; }}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) {{
+    position: fixed !important;
+    top: 1rem !important;
+    right: 1.25rem !important;
+    z-index: 60 !important;
+    width: auto !important;
+    max-width: 11rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) > [data-testid="stColumn"] {{
+    width: auto !important;
+    flex: 0 0 auto !important;
+    padding: 0 !important;
+    min-height: unset !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) [data-testid="stSegmentedControl"] {{
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
+}}
+.kahoot-login-theme-marker {{ display: none !important; }}
+.kahoot-login-row {{
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    min-height: 100vh !important;
+    gap: 0 !important;
+    margin: 0 !important;
+    z-index: 50 !important;
+    align-items: stretch !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"] {{
+    padding: 3.5rem 3rem !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    min-height: 100vh !important;
+    overflow-y: auto !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child {{
+    background: {BRAND_TEAL} !important;
+    flex: 0 0 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child {{
+    background: var(--kahoot-login-panel-right) !important;
+    flex: 0 0 50% !important;
+    width: 50% !important;
+    max-width: 50% !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"] > [data-testid="stVerticalBlock"] {{
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+    min-height: 100% !important;
+    flex: 1 1 auto !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child > [data-testid="stVerticalBlock"],
+.kahoot-login-row > [data-testid="stColumn"]:last-child > [data-testid="stVerticalBlock"] {{
+    max-width: 360px;
+}}
+.kahoot-left-inner {{ text-align: center; max-width: 320px; }}
+.kahoot-left-inner h2 {{
+    color: #ffffff; font-size: 2.4rem; font-weight: 700;
+    margin: 0 0 1rem; line-height: 1.2;
+    font-family: "Segoe UI", system-ui, sans-serif;
+}}
+.kahoot-left-inner p {{
+    color: rgba(255,255,255,0.95); font-size: 0.95rem; line-height: 1.7;
+    margin: 0 0 2rem; font-family: "Segoe UI", system-ui, sans-serif;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton {{
+    width: 100%; display: flex; justify-content: center;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button {{
+    background: transparent !important;
+    color: #ffffff !important;
+    border: 2px solid #ffffff !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    padding: 0.7rem 2.8rem !important;
+    letter-spacing: 0.08em !important;
+    min-width: 200px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:first-child .stButton > button:hover {{
+    background: rgba(255,255,255,0.12) !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) {{
+    max-width: 42px !important; width: auto !important;
+    margin: 0 auto 0.5rem !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"] {{
+    flex: 0 0 auto !important; width: auto !important; max-width: none !important;
+    min-height: unset !important; padding: 0 !important;
+    display: flex !important; align-items: center !important; justify-content: center !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) {{
+    position: relative !important;
+    width: 42px !important; height: 42px !important;
+    min-height: 42px !important; flex: 0 0 42px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) > [data-testid="stVerticalBlock"] {{
+    position: relative !important;
+    width: 42px !important; height: 42px !important;
+    min-height: 42px !important; justify-content: flex-start !important;
+}}
+.kahoot-google-visual {{
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 1px solid var(--kahoot-login-google-border);
+    background-color: var(--kahoot-login-google-bg);
+    background-image: url("{GOOGLE_ICON_SVG}");
+    background-size: 22px; background-repeat: no-repeat; background-position: center;
+    margin: 0 auto; pointer-events: none;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) > [data-testid="stColumn"]:nth-child(2) .element-container:has(
+    iframe[title="streamlit_oauth.authorize_button"]
+) {{
+    position: absolute !important; top: 0 !important; left: 0 !important;
+    width: 42px !important; height: 42px !important;
+    opacity: 0 !important; z-index: 2 !important;
+    margin: 0 !important; padding: 0 !important; overflow: visible !important;
+    border: none !important; background: transparent !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stHorizontalBlock"]:has(.kahoot-google-visual) iframe[title="streamlit_oauth.authorize_button"] {{
+    width: 42px !important; height: 42px !important; border: none !important;
+    margin: 0 !important; cursor: pointer !important;
+}}
+.kahoot-form-wrap {{ width: 100%; max-width: 360px; margin: 0 auto; }}
+.kahoot-form-title {{
+    color: var(--kahoot-login-form-title); font-size: 1.85rem; font-weight: 700;
+    text-align: center; margin: 0 0 1.25rem;
+    font-family: "Segoe UI", system-ui, sans-serif;
+}}
+.kahoot-form-sub {{
+    color: var(--kahoot-login-form-sub); font-size: 0.85rem; text-align: center; margin: 0 0 1rem;
+}}
+.kahoot-or-line {{
+    display: flex; align-items: center; gap: 0.75rem;
+    margin: 1.25rem 0; color: var(--kahoot-login-form-muted); font-size: 0.82rem;
+}}
+.kahoot-or-line::before, .kahoot-or-line::after {{
+    content: ""; flex: 1; height: 1px; background: var(--kahoot-login-or-line);
+}}
+.kahoot-footnote {{
+    color: var(--kahoot-login-form-muted); font-size: 0.78rem; text-align: center;
+    margin-top: 1.25rem; line-height: 1.5;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child label {{
+    color: var(--kahoot-login-label) !important; font-weight: 600 !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child input {{
+    background: var(--kahoot-login-input-bg) !important;
+    border: 1px solid var(--kahoot-login-input-border) !important;
+    color: var(--kahoot-login-input-text) !important;
+    border-radius: 8px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child .stTextInput > div > div {{
+    background: var(--kahoot-login-input-bg) !important;
+    border: 1px solid var(--kahoot-login-input-border) !important;
+    border-radius: 8px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button {{
+    background: {BRAND_TEAL} !important;
+    color: #ffffff !important;
+    border: none !important;
+    border-radius: 25px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.08em !important;
+    padding: 0.75rem 1.5rem !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button:hover {{
+    background: #3d7a72 !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child .stButton > button[kind="secondary"] {{
+    background: var(--kahoot-login-secondary-btn-bg) !important;
+    color: var(--kahoot-login-secondary-btn-text) !important;
+    border: 1px solid var(--kahoot-login-input-border) !important;
+    border-radius: 25px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stMarkdownContainer"] p,
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stCaption"] {{
+    color: var(--kahoot-login-form-muted) !important;
+}}
+@media (max-width: 768px) {{
+    .kahoot-login-row {{
+        position: relative !important;
+        flex-direction: column !important;
+        height: auto !important;
+        min-height: 100vh !important;
+    }}
+    .kahoot-login-row > [data-testid="stColumn"] {{
+        min-height: auto !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        flex: 1 1 auto !important;
+    }}
+}}
+"""
+
+
+def _app_chrome_css() -> str:
+    return """
+footer { visibility: hidden; }
+"""
+
+def _app_hide_toolbar_css() -> str:
+    return """
+header[data-testid="stHeader"] [data-testid="stMainMenu"],
+header[data-testid="stHeader"] [data-testid="stToolbarActions"] {
+    display: none !important;
+}
+header[data-testid="stHeader"] {
+    background: var(--background-color) !important;
+    border-bottom: 1px solid var(--kahoot-border) !important;
+    box-shadow: none !important;
+}
+[data-testid="stExpandSidebarButton"],
+[data-testid="stExpandSidebarButton"] button,
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"] button {
+    color: var(--kahoot-chrome-btn-icon) !important;
+    background: var(--kahoot-chrome-btn-bg) !important;
+    border: 1.5px solid var(--kahoot-chrome-btn-border) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+}
+[data-testid="stExpandSidebarButton"] span,
+[data-testid="stExpandSidebarButton"] svg,
+[data-testid="stExpandSidebarButton"] path,
+[data-testid="stExpandSidebarButton"] *,
+[data-testid="stSidebarCollapseButton"] span,
+[data-testid="stSidebarCollapseButton"] svg,
+[data-testid="stSidebarCollapseButton"] path,
+[data-testid="stSidebarCollapseButton"] * {
+    color: var(--kahoot-chrome-btn-icon) !important;
+    fill: var(--kahoot-chrome-btn-icon) !important;
+    stroke: var(--kahoot-chrome-btn-icon) !important;
+    -webkit-text-fill-color: var(--kahoot-chrome-btn-icon) !important;
+}
+"""
+
+def sidebar_session_css() -> str:
+    return f"""
+section[data-testid="stSidebar"]:has(.kahoot-sidebar-shell) {{
+    padding-top: 0.25rem !important;
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-account-block {{
+    margin-top: 0.65rem;
+    padding: 0.75rem 0.35rem 0.5rem;
+    border-top: 1px solid var(--kahoot-border);
+}}
+section[data-testid="stSidebar"]:has(.kahoot-sidebar-shell) .kahoot-account-menu-anchor ~ [data-testid="stVerticalBlock"] [data-testid="stPopover"],
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] {{
+    width: 100% !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    margin-bottom: 0.15rem !important;
+}}
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] > button,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] .stButton > button,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button {{
+    background: var(--background-color) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--kahoot-border-strong) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-size: 0.86rem !important;
+    line-height: 1.2 !important;
+    padding: 0.5rem 0.8rem !important;
+    min-height: 2.5rem !important;
+    width: 100% !important;
+    letter-spacing: 0 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.45rem !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}}
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] .stButton {{
+    width: 100% !important;
+}}
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button [data-testid="stIconMaterial"],
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button span[data-testid="stIconMaterial"] {{
+    color: {BRAND_TEAL} !important;
+}}
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] > button:hover,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] .stButton > button:hover,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button:hover {{
+    background: color-mix(in srgb, {BRAND_TEAL} 9%, var(--background-color)) !important;
+    color: var(--text-color) !important;
+    border-color: {BRAND_TEAL} !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07) !important;
+}}
+section[data-testid="stSidebar"] .kahoot-account-menu-anchor {{
+    display: none !important;
+}}
+/* Sidebar recolhida: só ícone do menu, centralizado */
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button {{
+    padding: 0.45rem !important;
+    min-width: 2.5rem !important;
+    width: 2.5rem !important;
+    min-height: 2.5rem !important;
+    border-radius: 0.65rem !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button p,
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button span:not([data-testid="stIconMaterial"]) {{
+    display: none !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"] .kahoot-sidebar-account-block {{
+    display: none !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-sidebar-shell) hr {{
+    display: none !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) [data-testid="stSegmentedControl"] {{
+    width: 100% !important;
+    margin-bottom: 0.35rem !important;
+}}
+.kahoot-session-bar {{
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    min-width: 0;
+}}
+.kahoot-session-avatar {{
+    flex: 0 0 auto;
+    width: 2.5rem;
+    height: 2.5rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.82rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #ffffff;
+    background: linear-gradient(135deg, {BRAND_TEAL} 0%, #3d7a72 100%);
+    border: 2px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+}}
+.kahoot-session-info {{
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    min-width: 0;
+    flex: 1 1 auto;
+}}
+.kahoot-session-line {{
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}}
+.kahoot-session-name {{
+    color: var(--text-color, #31333F);
+    font-size: 0.95rem;
+    font-weight: 700;
+    line-height: 1.2;
+}}
+.kahoot-session-email {{
+    color: var(--kahoot-text-muted, #5c6370);
+    font-size: 0.78rem;
+    line-height: 1.25;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}}
+.kahoot-session-role {{
+    display: inline-flex;
+    align-items: center;
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    color: var(--primary-color) !important;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
+}}
+.kahoot-session-role--student {{
+    background: var(--kahoot-student-role-bg);
+    color: var(--kahoot-student-role-text);
+    border-color: var(--kahoot-student-role-border);
+}}
+section[data-testid="stSidebar"] .kahoot-logout-confirm {{
+    margin-top: 0.65rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid var(--kahoot-border);
+}}
+section[data-testid="stSidebar"] .kahoot-sidebar-nav-title {{
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--kahoot-text-subtle, #6b7280);
+    margin: 0.35rem 0 0.5rem;
+}}
+.kahoot-menu-panel {{
+    min-width: 12.5rem;
+    padding: 0.1rem 0 0.15rem;
+}}
+.kahoot-menu-account-name {{
+    color: var(--text-color, #31333F);
+    font-size: 0.92rem;
+    font-weight: 700;
+    line-height: 1.25;
+    margin-bottom: 0.2rem;
+}}
+.kahoot-menu-role {{
+    color: var(--kahoot-text-muted, #5c6370);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 0.15rem;
+}}
+.kahoot-menu-email {{
+    color: var(--kahoot-text-muted, #5c6370);
+    font-size: 0.78rem;
+    line-height: 1.3;
+    word-break: break-word;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) {{
+    min-width: 13rem !important;
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .stButton > button {{
+    background-color: var(--secondary-background-color) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--kahoot-border-strong) !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .element-container:has(.kahoot-menu-logout-marker) + .element-container .stButton > button {{
+    background: transparent !important;
+    color: var(--kahoot-danger) !important;
+    border: 1px solid color-mix(in srgb, var(--kahoot-danger) 55%, transparent) !important;
+    border-radius: 8px !important;
+    font-weight: 600 !important;
+    font-size: 0.82rem !important;
+    padding: 0.45rem 1rem !important;
+    min-height: 2.75rem !important;
+    height: 2.75rem !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .element-container:has(.kahoot-menu-logout-marker) + .element-container .stButton > button:hover {{
+    background: var(--kahoot-danger-bg-hover) !important;
+    border-color: var(--kahoot-danger) !important;
+    color: var(--kahoot-danger-hover) !important;
+}}
+.kahoot-menu-section-title {{
+    color: var(--kahoot-text-subtle, #6b7280);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0.15rem 0 0.35rem;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) [data-testid="stRadio"] label {{
+    font-size: 0.84rem !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .element-container:has(.kahoot-menu-action-marker) + .element-container .stButton > button {{
+    min-height: 2.5rem !important;
+    font-size: 0.82rem !important;
+}}
+"""
+
+
+def inject_app_chrome(*, hide_toolbar: bool = False) -> None:
+    css = _app_chrome_css() + (_app_hide_toolbar_css() if hide_toolbar else "")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+
+def inject_login_page_css() -> None:
+    st.markdown(f"<style>{login_page_css()}</style>", unsafe_allow_html=True)
+
+
+def inject_login_layout_script() -> None:
+    css_json = json.dumps(login_page_css())
+    st.html(
+        f"""
+        <script>
+        (function() {{
+            function applyLoginLayout() {{
+                let style = document.getElementById("kahoot-login-style");
+                if (!style) {{
+                    style = document.createElement("style");
+                    style.id = "kahoot-login-style";
+                    document.head.appendChild(style);
+                }}
+                style.textContent = {css_json};
+                document.querySelectorAll(".kahoot-login-marker").forEach((marker) => {{
+                    const row = marker.closest('[data-testid="stHorizontalBlock"]');
+                    if (row) row.classList.add("kahoot-login-row");
+                }});
+            }}
+            applyLoginLayout();
+            setTimeout(applyLoginLayout, 50);
+            setTimeout(applyLoginLayout, 300);
+        }})();
+        </script>
+        """,
+        unsafe_allow_javascript=True,
+    )
+
+
+def clear_login_page_styles() -> None:
+    st.html(
+        """
+        <script>
+        (function () {
+            const style = document.getElementById("kahoot-login-style");
+            if (style) style.remove();
+            document.querySelectorAll(".kahoot-login-row").forEach((row) => {
+                row.classList.remove("kahoot-login-row");
+            });
+        })();
+        </script>
+        """,
+        unsafe_allow_javascript=True,
+    )
+
+
+def inject_sidebar_session_css() -> None:
+    st.markdown(f"<style>{sidebar_session_css()}</style>", unsafe_allow_html=True)
 
 
 def render_theme_selector(
