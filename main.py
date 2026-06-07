@@ -336,6 +336,22 @@ def plot_question_performance(leaderboard, total_questions):
 # ---------------------------
 LOGIN_ACCENT = "#6C63FF"
 LOGIN_ACCENT_DARK = "#5B54E8"
+GOOGLE_ICON_SVG = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E"
+    "%3Cpath fill='%23FFC107' d='M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8"
+    "-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657"
+    "C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20"
+    "c0-1.341-.138-2.65-.389-3.916z'/%3E"
+    "%3Cpath fill='%23FF3D00' d='m6.306 14.691 6.571 4.819C14.655 15.108 18.961 12 24 12"
+    "c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4"
+    " 16.318 4 9.656 8.337 6.306 14.691z'/%3E"
+    "%3Cpath fill='%234CAF50' d='M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238"
+    "C29.211 35.091 26.715 36 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025"
+    "C9.505 39.556 16.227 44 24 44z'/%3E"
+    "%3Cpath fill='%231976D2' d='M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571"
+    "l6.19 5.238C42.022 35.026 44 30.038 44 24c0-1.341-.138-2.65-.389-3.917z'/%3E"
+    "%3C/svg%3E"
+)
 
 
 def inject_login_page_css():
@@ -344,177 +360,240 @@ def inject_login_page_css():
         <style>
         section[data-testid="stSidebar"] {{ display: none; }}
         header[data-testid="stHeader"] {{ background: transparent; }}
-        .block-container {{
-            padding-top: 2rem;
-            max-width: 960px;
+        .stApp {{
+            background: linear-gradient(160deg, #eef2ff 0%, #f8fafc 45%, #f1f5f9 100%);
+        }}
+        .block-container:has(#quiz-login-active) {{
+            padding-top: 2.5rem;
+            padding-bottom: 3rem;
+            max-width: 920px;
         }}
         .login-brand {{
             text-align: center;
-            margin-bottom: 1.25rem;
+            margin-bottom: 1.75rem;
         }}
         .login-brand h1 {{
-            font-size: 1.75rem;
-            font-weight: 700;
+            font-size: 2rem;
+            font-weight: 800;
             margin: 0;
-            color: inherit;
+            color: #1e1b4b;
+            letter-spacing: -0.02em;
         }}
         .login-brand p {{
-            margin: 0.35rem 0 0;
-            opacity: 0.75;
-            font-size: 0.95rem;
+            margin: 0.4rem 0 0;
+            color: #64748b;
+            font-size: 1rem;
         }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) {{
-            border-radius: 18px;
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type {{
+            background: #ffffff;
+            border-radius: 22px;
             overflow: hidden;
-            box-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
-            min-height: 500px;
+            box-shadow: 0 24px 60px rgba(15, 23, 42, 0.14);
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            min-height: 520px;
             align-items: stretch !important;
+            gap: 0 !important;
         }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:first-child {{
-            background: linear-gradient(145deg, {LOGIN_ACCENT} 0%, {LOGIN_ACCENT_DARK} 100%);
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:first-child {{
+            background: linear-gradient(155deg, {LOGIN_ACCENT} 0%, #7c3aed 55%, {LOGIN_ACCENT_DARK} 100%);
             padding: 3rem 2rem !important;
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child {{
+            background: #ffffff;
+            padding: 2.75rem 2.5rem 2.25rem !important;
+        }}
+        .login-left-inner {{
+            min-height: 420px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
             text-align: center;
+            padding: 0 0.5rem;
         }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:last-child {{
-            background: #ffffff;
-            padding: 2.5rem 2.5rem 2rem !important;
-            color: #1f2937;
-        }}
-        .login-accent-title {{
+        .login-left-inner h2 {{
             color: #ffffff;
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0 0 0.75rem;
-            line-height: 1.2;
+            font-size: 2.1rem;
+            font-weight: 800;
+            margin: 0 0 0.85rem;
+            line-height: 1.15;
+            letter-spacing: -0.02em;
         }}
-        .login-accent-text {{
-            color: rgba(255, 255, 255, 0.92);
-            font-size: 0.95rem;
-            line-height: 1.55;
-            margin: 0 0 2rem;
-            max-width: 260px;
+        .login-left-inner p {{
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.98rem;
+            line-height: 1.6;
+            margin: 0;
+            max-width: 270px;
+        }}
+        .login-left-bg-top {{
+            background: linear-gradient(155deg, {LOGIN_ACCENT} 0%, #7c3aed 55%, {LOGIN_ACCENT_DARK} 100%);
+            margin: -1rem -0.75rem 0 -1rem;
+            padding: 2.5rem 1.5rem 1.5rem;
+            border-radius: 22px 0 0 0;
+        }}
+        .login-left-bg-bottom {{
+            background: linear-gradient(155deg, {LOGIN_ACCENT_DARK} 0%, #7c3aed 100%);
+            margin: 0 -0.75rem -1rem -1rem;
+            padding: 0.5rem 1.5rem 2.5rem;
+            border-radius: 0 0 0 22px;
         }}
         .login-form-title {{
-            color: {LOGIN_ACCENT};
-            font-size: 2rem;
-            font-weight: 700;
-            margin: 0 0 1.25rem;
+            color: #1e1b4b;
+            font-size: 1.85rem;
+            font-weight: 800;
+            margin: 0 0 1.5rem;
             text-align: center;
+            letter-spacing: -0.02em;
         }}
         .login-form-hint {{
-            color: #6b7280;
-            font-size: 0.85rem;
+            color: #64748b;
+            font-size: 0.88rem;
             text-align: center;
-            margin: 0 0 1.25rem;
+            margin: 0 0 1rem;
         }}
-        .login-social-row {{
+        .login-or-line {{
             display: flex;
-            justify-content: center;
-            margin-bottom: 0.35rem;
+            align-items: center;
+            gap: 0.75rem;
+            margin: 1.1rem 0 1.25rem;
+            color: #94a3b8;
+            font-size: 0.8rem;
         }}
-        div[data-testid="column"]:has(.google-oauth-slot) {{
+        .login-or-line::before,
+        .login-or-line::after {{
+            content: "";
+            flex: 1;
+            height: 1px;
+            background: #e2e8f0;
+        }}
+        .google-oauth-center {{
             display: flex;
             flex-direction: column;
             align-items: center;
-            justify-content: center;
+            margin: 0.25rem 0 0.15rem;
         }}
-        div[data-testid="column"]:has(.google-oauth-slot) .stButton {{
+        .block-container:has(#quiz-login-active) .google-oauth-center .stButton {{
             display: flex;
             justify-content: center;
-            width: auto;
         }}
-        div[data-testid="column"]:has(.google-oauth-slot) .stButton > button {{
-            width: 52px !important;
-            height: 52px !important;
-            min-height: 52px !important;
+        .block-container:has(#quiz-login-active) .google-oauth-center .stButton > button {{
+            width: 56px !important;
+            height: 56px !important;
+            min-height: 56px !important;
             border-radius: 50% !important;
             padding: 0 !important;
-            font-size: 1.2rem !important;
-            font-weight: 700 !important;
-            background: #ffffff !important;
-            color: #4285F4 !important;
-            border: 1px solid #e5e7eb !important;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            font-size: 0 !important;
+            color: transparent !important;
+            background-color: #ffffff !important;
+            background-image: url("{GOOGLE_ICON_SVG}") !important;
+            background-repeat: no-repeat !important;
+            background-position: center !important;
+            background-size: 28px 28px !important;
+            border: 1px solid #e2e8f0 !important;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
         }}
-        div[data-testid="column"]:has(.google-oauth-slot) .stButton > button:hover {{
-            border-color: #4285F4 !important;
-            background: #f8faff !important;
-            color: #1a73e8 !important;
-            box-shadow: 0 4px 14px rgba(66, 133, 244, 0.22);
+        .block-container:has(#quiz-login-active) .google-oauth-center .stButton > button:hover {{
+            border-color: #cbd5e1 !important;
+            box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
+            transform: translateY(-1px);
         }}
-        div[data-testid="column"]:has(.google-oauth-slot--prof) .stButton > button {{
+        .block-container:has(#quiz-login-active) .google-oauth-center--prof .stButton > button {{
+            background-image: none !important;
+            font-size: 1.15rem !important;
             color: {LOGIN_ACCENT} !important;
+            font-weight: 800 !important;
         }}
-        div[data-testid="column"]:has(.google-oauth-slot--prof) .stButton > button:hover {{
-            border-color: {LOGIN_ACCENT} !important;
-            background: #f5f3ff !important;
-            color: {LOGIN_ACCENT_DARK} !important;
-            box-shadow: 0 4px 14px rgba(108, 99, 255, 0.22);
-        }}
-        .google-oauth-caption {{
+        .google-oauth-label {{
+            margin-top: 0.55rem;
+            color: #64748b;
+            font-size: 0.78rem;
             text-align: center;
-            color: #9ca3af;
-            font-size: 0.75rem;
-            margin: 0.15rem 0 0.85rem;
         }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stButton > button[kind="primary"] {{
-            background: {LOGIN_ACCENT};
-            border: none;
-            border-radius: 999px;
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:first-child .stButton > button {{
+            background: transparent !important;
+            color: #ffffff !important;
+            border: 2px solid rgba(255, 255, 255, 0.95) !important;
+            border-radius: 999px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.08em !important;
+            padding: 0.7rem 2.75rem !important;
+            margin-top: 2rem;
+            min-width: 200px;
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:first-child .stButton > button:hover {{
+            background: rgba(255, 255, 255, 0.14) !important;
+            border-color: #ffffff !important;
+            color: #ffffff !important;
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child .stButton > button[kind="primary"],
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child [data-testid="stFormSubmitButton"] > button {{
+            background: {LOGIN_ACCENT} !important;
+            border: none !important;
+            border-radius: 999px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.05em !important;
+            padding: 0.72rem 1.5rem !important;
+            box-shadow: 0 8px 20px rgba(108, 99, 255, 0.35);
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child .stButton > button[kind="primary"]:hover,
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child [data-testid="stFormSubmitButton"] > button:hover {{
+            background: {LOGIN_ACCENT_DARK} !important;
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child .stButton > button[kind="secondary"] {{
+            background: #f8fafc !important;
+            color: #334155 !important;
+            border: 1px solid #e2e8f0 !important;
+            border-radius: 999px !important;
+            font-weight: 600 !important;
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child input {{
+            border-radius: 12px !important;
+            border: 1px solid #e2e8f0 !important;
+            background: #f8fafc !important;
+            padding: 0.65rem 0.9rem !important;
+        }}
+        .block-container:has(#quiz-login-active)
+        [data-testid="stVerticalBlock"] > [data-testid="stHorizontalBlock"]:first-of-type
+        > [data-testid="column"]:last-child .stTextInput > div > div {{
+            background: #f8fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }}
+        .login-section-label {{
+            color: #334155;
+            font-size: 0.92rem;
             font-weight: 700;
-            letter-spacing: 0.04em;
-            padding: 0.65rem 2rem;
-        }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stButton > button[kind="primary"]:hover {{
-            background: {LOGIN_ACCENT_DARK};
-        }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:first-child .stButton > button {{
-            background: transparent;
-            color: #ffffff;
-            border: 2px solid #ffffff;
-            border-radius: 999px;
-            font-weight: 700;
-            letter-spacing: 0.06em;
-            padding: 0.6rem 2.5rem;
-        }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) > div[data-testid="column"]:first-child .stButton > button:hover {{
-            background: rgba(255, 255, 255, 0.12);
-            color: #ffffff;
-            border-color: #ffffff;
-        }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) label {{
-            color: #374151 !important;
-            font-size: 0.85rem;
-        }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) input {{
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-            background: #f3f4f6;
-        }}
-        div[data-testid="stHorizontalBlock"]:has(.login-col-marker) .stTextInput > div > div {{
-            background: #f3f4f6;
-            border-radius: 8px;
-        }}
-        .login-divider {{
+            margin: 1.5rem 0 0.75rem;
             text-align: center;
-            color: #9ca3af;
-            font-size: 0.8rem;
-            margin: 0.75rem 0;
         }}
-        .login-professor-box {{
-            margin-top: 1.5rem;
-            padding-top: 1.25rem;
-            border-top: 1px solid #e5e7eb;
-        }}
-        .login-professor-box p {{
-            color: #6b7280;
-            font-size: 0.85rem;
+        .login-professor-note {{
+            color: #94a3b8;
+            font-size: 0.76rem;
             text-align: center;
-            margin: 0 0 0.75rem;
+            margin: 0.5rem 0 0;
+            line-height: 1.45;
         }}
         </style>
         """,
@@ -566,39 +645,35 @@ def _handle_professor_google(profile: dict):
 def render_google_icon_login(key: str, role_hint: str, *, professor: bool = False) -> dict | None:
     if not google_oauth_configured():
         return None
-    slot_class = "google-oauth-slot google-oauth-slot--prof" if professor else "google-oauth-slot"
-    _, col_icon, _ = st.columns([2.2, 1, 2.2])
-    with col_icon:
-        st.markdown(f'<div class="{slot_class}"></div>', unsafe_allow_html=True)
-        return render_google_login_button(
-            "G",
-            key=key,
-            role_hint=role_hint,
-            use_container_width=False,
-        )
+    extra = " google-oauth-center--prof" if professor else ""
+    st.markdown(f'<div class="google-oauth-center{extra}">', unsafe_allow_html=True)
+    profile = render_google_login_button(
+        "G",
+        key=key,
+        role_hint=role_hint,
+        use_container_width=False,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
+    return profile
 
 
 def render_login_signup_panel():
     st.markdown('<p class="login-form-title">Criar conta</p>', unsafe_allow_html=True)
 
     if google_oauth_configured():
-        st.markdown('<div class="login-social-row"></div>', unsafe_allow_html=True)
         profile = render_google_icon_login("oauth_student_signup", "student")
         if profile:
             _handle_student_google(profile)
-        st.markdown(
-            '<p class="google-oauth-caption">Entrar com Google</p>'
-            '<p class="login-form-hint">ou cadastre-se com seu nome:</p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<p class="google-oauth-label">Continuar com Google</p>', unsafe_allow_html=True)
+        st.markdown('<div class="login-or-line">ou use seu nome</div>', unsafe_allow_html=True)
     else:
         st.markdown(
-            '<p class="login-form-hint">Cadastre-se com seu nome:</p>',
+            '<p class="login-form-hint">Informe seu nome para participar dos quizzes.</p>',
             unsafe_allow_html=True,
         )
 
     with st.form("register_on_login"):
-        name = st.text_input("Nome", placeholder="Ex.: Maria Silva", label_visibility="collapsed")
+        name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
         submitted = st.form_submit_button("CADASTRAR-SE", use_container_width=True, type="primary")
         if submitted:
             ok, _ = _register_student_name(name)
@@ -610,33 +685,27 @@ def render_login_signup_panel():
 
 def render_login_signin_panel():
     st.markdown('<p class="login-form-title">Entrar</p>', unsafe_allow_html=True)
+    st.markdown('<p class="login-section-label">👨‍🎓 Área do aluno</p>', unsafe_allow_html=True)
 
-    st.markdown("**👨‍🎓 Aluno**")
     if google_oauth_configured():
         profile = render_google_icon_login("oauth_student_signin", "student")
         if profile:
             _handle_student_google(profile)
-        st.markdown(
-            '<p class="google-oauth-caption">Entrar com Google</p>'
-            '<p class="login-divider">ou</p>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<p class="google-oauth-label">Entrar com Google</p>', unsafe_allow_html=True)
+        st.markdown('<div class="login-or-line">ou</div>', unsafe_allow_html=True)
 
-    if st.button("Entrar como aluno (sem Google)", use_container_width=True, key="student_no_google"):
+    if st.button(
+        "Continuar sem Google",
+        use_container_width=True,
+        key="student_no_google",
+        type="secondary",
+    ):
         st.session_state.role = "student"
         st.session_state.current_user = None
         st.rerun()
 
-    st.markdown(
-        '<div class="login-professor-box">'
-        "<p><strong>👨‍🏫 Professor</strong> — login com Google</p>"
-        "</div>",
-        unsafe_allow_html=True,
-    )
+    st.markdown('<p class="login-section-label">👨‍🏫 Área do professor</p>', unsafe_allow_html=True)
     if google_oauth_configured():
-        st.caption(
-            f"Novos professores precisam de aprovação do administrador ({get_system_admin_email()})."
-        )
         profile = render_google_icon_login(
             "oauth_professor_signin",
             "professor",
@@ -644,8 +713,10 @@ def render_login_signin_panel():
         )
         if profile:
             _handle_professor_google(profile)
+        st.markdown('<p class="google-oauth-label">Entrar como professor</p>', unsafe_allow_html=True)
         st.markdown(
-            '<p class="google-oauth-caption">Entrar como professor</p>',
+            f'<p class="login-professor-note">Novos professores precisam de aprovação '
+            f"do administrador ({get_system_admin_email()}).</p>",
             unsafe_allow_html=True,
         )
     else:
@@ -674,6 +745,7 @@ def render_login_signin_panel():
 
 def render_login():
     inject_login_page_css()
+    st.markdown('<span id="quiz-login-active"></span>', unsafe_allow_html=True)
     view = st.session_state.auth_view
 
     st.markdown(
@@ -684,31 +756,39 @@ def render_login():
         unsafe_allow_html=True,
     )
 
-    col_left, col_right = st.columns([4, 6], gap="small")
+    col_left, col_right = st.columns([42, 58], gap="small")
 
     with col_left:
-        st.markdown('<span class="login-col-marker"></span>', unsafe_allow_html=True)
         if view == "signup":
             st.markdown(
-                '<p class="login-accent-title">Bem-vindo de volta!</p>'
-                '<p class="login-accent-text">Para continuar no quiz, entre com sua conta.</p>',
+                '<div class="login-left-bg-top"><div class="login-left-inner">'
+                "<h2>Bem-vindo de volta!</h2>"
+                "<p>Já tem cadastro? Entre e continue de onde parou nos quizzes e provas.</p>"
+                "</div></div>",
                 unsafe_allow_html=True,
             )
-            if st.button("ENTRAR", key="go_signin", use_container_width=True):
-                st.session_state.auth_view = "signin"
-                st.rerun()
+            st.markdown('<div class="login-left-bg-bottom">', unsafe_allow_html=True)
+            _, btn_col, _ = st.columns([1, 2.2, 1])
+            with btn_col:
+                if st.button("ENTRAR", key="go_signin", use_container_width=True):
+                    st.session_state.auth_view = "signin"
+                    st.rerun()
         else:
             st.markdown(
-                '<p class="login-accent-title">Criar conta</p>'
-                '<p class="login-accent-text">Primeiro acesso? Cadastre-se em poucos segundos.</p>',
+                '<div class="login-left-bg-top"><div class="login-left-inner">'
+                "<h2>Novo por aqui?</h2>"
+                "<p>Crie sua conta em segundos e comece a responder quizzes agora mesmo.</p>"
+                "</div></div>",
                 unsafe_allow_html=True,
             )
-            if st.button("CADASTRAR-SE", key="go_signup", use_container_width=True):
-                st.session_state.auth_view = "signup"
-                st.rerun()
+            st.markdown('<div class="login-left-bg-bottom">', unsafe_allow_html=True)
+            _, btn_col, _ = st.columns([1, 2.8, 1])
+            with btn_col:
+                if st.button("CADASTRAR-SE", key="go_signup", use_container_width=True):
+                    st.session_state.auth_view = "signup"
+                    st.rerun()
 
     with col_right:
-        st.markdown('<span class="login-col-marker"></span>', unsafe_allow_html=True)
         if view == "signup":
             render_login_signup_panel()
         else:
