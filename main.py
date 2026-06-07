@@ -489,14 +489,16 @@ def inject_login_page_css():
             align-items: center;
             margin: 0.25rem 0 0.15rem;
         }}
-        .block-container:has(#quiz-login-active) .google-oauth-center .stButton {{
+        div[data-testid="column"]:has(.google-oauth-marker) .stButton {{
             display: flex;
             justify-content: center;
+            margin: 0 auto;
         }}
-        .block-container:has(#quiz-login-active) .google-oauth-center .stButton > button {{
+        div[data-testid="column"]:has(.google-oauth-marker) .stButton > button {{
             width: 56px !important;
             height: 56px !important;
             min-height: 56px !important;
+            min-width: 56px !important;
             border-radius: 50% !important;
             padding: 0 !important;
             font-size: 0 !important;
@@ -509,7 +511,7 @@ def inject_login_page_css():
             border: 1px solid #e2e8f0 !important;
             box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
         }}
-        .block-container:has(#quiz-login-active) .google-oauth-center .stButton > button:hover {{
+        div[data-testid="column"]:has(.google-oauth-marker) .stButton > button:hover {{
             border-color: #cbd5e1 !important;
             box-shadow: 0 8px 22px rgba(15, 23, 42, 0.12);
             transform: translateY(-1px);
@@ -637,23 +639,35 @@ def _handle_unified_google(profile: dict):
 def render_google_icon_login(key: str) -> dict | None:
     if not google_oauth_configured():
         return None
-    st.markdown('<div class="google-oauth-center">', unsafe_allow_html=True)
-    profile = render_google_login_button(
-        "G",
-        key=key,
-        role_hint="unified",
-        use_container_width=False,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
-    return profile
+    _, col_g, _ = st.columns([2.2, 1, 2.2])
+    with col_g:
+        st.markdown('<span class="google-oauth-marker"></span>', unsafe_allow_html=True)
+        return render_google_login_button(
+            "G",
+            key=key,
+            role_hint="unified",
+            use_container_width=False,
+        )
 
 
 def render_login_signup_panel():
     st.markdown('<p class="login-form-title">Criar conta</p>', unsafe_allow_html=True)
-    st.markdown(
-        '<p class="login-form-hint">Informe seu nome para participar dos quizzes.</p>',
-        unsafe_allow_html=True,
-    )
+
+    if google_oauth_configured():
+        profile = render_google_icon_login("oauth_signup")
+        if profile:
+            _handle_unified_google(profile)
+        st.markdown(
+            '<p class="google-oauth-label">Cadastrar ou entrar com Google</p>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="login-or-line">ou use seu nome</div>', unsafe_allow_html=True)
+    else:
+        render_oauth_setup_help()
+        st.markdown(
+            '<p class="login-form-hint">Informe seu nome para participar dos quizzes.</p>',
+            unsafe_allow_html=True,
+        )
 
     with st.form("register_on_login"):
         name = st.text_input("Nome completo", placeholder="Ex.: Maria Silva")
@@ -673,7 +687,10 @@ def render_login_signin_panel():
         profile = render_google_icon_login("oauth_signin")
         if profile:
             _handle_unified_google(profile)
-        st.markdown('<p class="google-oauth-label">Entrar com Google</p>', unsafe_allow_html=True)
+        st.markdown(
+            '<p class="google-oauth-label">Entrar ou cadastrar com Google</p>',
+            unsafe_allow_html=True,
+        )
         st.markdown('<div class="login-or-line">ou</div>', unsafe_allow_html=True)
     else:
         render_oauth_setup_help()
