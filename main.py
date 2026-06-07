@@ -226,10 +226,35 @@ def init_session_state():
             st.session_state[key] = value
 
 
+def _logout_requires_confirmation() -> bool:
+    if st.session_state.get("quiz_active") and not st.session_state.get("quiz_finished"):
+        return True
+    return st.session_state.get("exam_mode") == "take"
+
+
+def _logout_button_label() -> str:
+    if st.session_state.get("current_user"):
+        return "Sair da conta"
+    return "Voltar ao início"
+
+
+def _logout_confirmation_message() -> str:
+    if st.session_state.get("exam_mode") == "take":
+        return (
+            "Você está fazendo uma prova. Se sair agora, "
+            "perderá o progresso desta tentativa."
+        )
+    return (
+        "Você está no meio de um quiz. Se sair agora, "
+        "perderá o progresso desta tentativa."
+    )
+
+
 def logout():
     clear_oauth_session()
     for key in list(st.session_state.keys()):
         del st.session_state[key]
+    st.session_state.logout_message = "Sessão encerrada com sucesso."
     st.rerun()
 
 
@@ -679,17 +704,23 @@ SESSION_BAR_CSS = f"""
     border: 1px solid rgba(199, 85, 85, 0.55) !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
-    font-size: 0.78rem !important;
-    padding: 0.35rem 0.85rem !important;
-    min-height: 2rem !important;
-    height: 2rem !important;
+    font-size: 0.82rem !important;
+    padding: 0.45rem 1rem !important;
+    min-height: 2.75rem !important;
+    height: 2.75rem !important;
     width: auto !important;
-    min-width: 4.25rem !important;
+    min-width: 5.5rem !important;
+    white-space: nowrap !important;
 }}
 [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button:hover {{
     background: rgba(196, 85, 85, 0.12) !important;
     border-color: #c45555 !important;
     color: #b91c1c !important;
+}}
+[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .kahoot-logout-confirm {{
+    margin-top: 0.65rem;
+    padding-top: 0.65rem;
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
 }}
 section[data-testid="stSidebar"] .kahoot-sidebar-account {{
     padding: 0.5rem 0 0.85rem;
@@ -707,23 +738,29 @@ section[data-testid="stSidebar"] .kahoot-session-avatar {{
 section[data-testid="stSidebar"] .kahoot-session-name {{
     font-size: 0.88rem;
 }}
-section[data-testid="stSidebar"] .element-container:has(.kahoot-sidebar-logout-marker) + .element-container .stButton > button {{
-    background: transparent !important;
-    color: #c75555 !important;
-    border: 1px solid rgba(199, 85, 85, 0.55) !important;
-    border-radius: 8px !important;
-    font-weight: 600 !important;
-    font-size: 0.78rem !important;
-    padding: 0.3rem 0.85rem !important;
-    min-height: 1.85rem !important;
-    height: 1.85rem !important;
-    width: auto !important;
-    margin-bottom: 0.5rem !important;
-}}
-section[data-testid="stSidebar"] .element-container:has(.kahoot-sidebar-logout-marker) + .element-container .stButton > button:hover {{
-    background: rgba(196, 85, 85, 0.12) !important;
-    border-color: #c45555 !important;
-    color: #b91c1c !important;
+@media (max-width: 640px) {{
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] {{
+        flex-wrap: wrap !important;
+    }}
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {{
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }}
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {{
+        flex: 1 1 100% !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        justify-content: flex-start !important;
+        margin-top: 0.35rem !important;
+    }}
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-logout-marker) + .element-container .stButton {{
+        margin-left: 0 !important;
+        width: 100% !important;
+    }}
+    [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-logout-marker) + .element-container .stButton > button {{
+        width: 100% !important;
+    }}
 }}
 """
 
@@ -938,6 +975,10 @@ def render_login_signin_panel():
 
 
 def render_login():
+    logout_message = st.session_state.pop("logout_message", None)
+    if logout_message:
+        st.success(logout_message)
+
     view = st.session_state.auth_view
     if view == "signup":
         left_title = "Bem-vindo de volta!"
@@ -1001,6 +1042,7 @@ def render_session_controls():
         if role_label == "Professor"
         else "kahoot-session-role kahoot-session-role--student"
     )
+    logout_label = _logout_button_label()
 
     st.markdown(f"<style>{APP_HEADER_CSS}{SESSION_BAR_CSS}</style>", unsafe_allow_html=True)
     _clear_login_page_styles()
@@ -1016,21 +1058,45 @@ def render_session_controls():
 
     with st.container(border=True):
         st.markdown('<span class="kahoot-session-shell"></span>', unsafe_allow_html=True)
-        profile_col, logout_col = st.columns([9, 1], vertical_alignment="center", gap="medium")
-        with profile_col:
+        if st.session_state.get("confirm_logout"):
             st.markdown(profile_html, unsafe_allow_html=True)
-        with logout_col:
-            st.markdown('<span class="kahoot-logout-marker"></span>', unsafe_allow_html=True)
-            if st.button("Sair", key="logout_top", use_container_width=False, type="secondary"):
-                logout()
+            st.markdown('<div class="kahoot-logout-confirm"></div>', unsafe_allow_html=True)
+            st.warning(_logout_confirmation_message())
+            cancel_col, confirm_col = st.columns(2)
+            with cancel_col:
+                if st.button("Cancelar", key="logout_cancel", use_container_width=True):
+                    st.session_state.confirm_logout = False
+                    st.rerun()
+            with confirm_col:
+                if st.button(
+                    logout_label,
+                    key="logout_confirm",
+                    use_container_width=True,
+                    type="primary",
+                ):
+                    logout()
+        else:
+            profile_col, logout_col = st.columns([9, 1], vertical_alignment="center", gap="medium")
+            with profile_col:
+                st.markdown(profile_html, unsafe_allow_html=True)
+            with logout_col:
+                st.markdown('<span class="kahoot-logout-marker"></span>', unsafe_allow_html=True)
+                if st.button(
+                    logout_label,
+                    key="logout_top",
+                    use_container_width=False,
+                    type="secondary",
+                ):
+                    if _logout_requires_confirmation():
+                        st.session_state.confirm_logout = True
+                        st.rerun()
+                    else:
+                        logout()
 
     st.sidebar.markdown(
         f'<div class="kahoot-sidebar-account">{profile_html}</div>',
         unsafe_allow_html=True,
     )
-    st.sidebar.markdown('<span class="kahoot-sidebar-logout-marker"></span>', unsafe_allow_html=True)
-    if st.sidebar.button("Sair", key="logout_sidebar", use_container_width=False, type="secondary"):
-        logout()
     st.sidebar.divider()
 
 
