@@ -14,8 +14,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pdfplumber
 import streamlit as st
-import streamlit.components.v1 as components
-
 try:
     import auth_users
 except ImportError as exc:
@@ -34,7 +32,13 @@ if not hasattr(auth_users, "resolve_unified_google_login"):
     )
     st.stop()
 
+import importlib
+
 import quiz_storage
+_ui_theme_mod = importlib.reload(importlib.import_module("ui_theme"))
+apply_ui_theme = _ui_theme_mod.apply_ui_theme
+finalize_ui_theme = _ui_theme_mod.finalize_ui_theme
+render_theme_selector = _ui_theme_mod.render_theme_selector
 from google_auth import (
     clear_oauth_session,
     google_oauth_configured,
@@ -220,6 +224,9 @@ def init_session_state():
         "exam_mode": "select",
         "exam_submission_result": None,
         "auth_view": "signup",
+        "professor_section": "materials",
+        "student_section": "quiz",
+        "ui_theme": "system",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -381,8 +388,6 @@ def plot_question_performance(leaderboard, total_questions):
 # Login — split 50/50 (referência visual)
 # ---------------------------
 LOGIN_TEAL = "#458588"
-LOGIN_DARK = "#1d2021"
-LOGIN_INPUT_BG = "#2d3436"
 GOOGLE_ICON_SVG = (
     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E"
     "%3Cpath fill='%23FFC107' d='M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8"
@@ -406,9 +411,23 @@ LOGIN_PAGE_CSS = f"""
     display: none !important;
 }}
 .stApp:has(.kahoot-login-marker) header[data-testid="stHeader"] {{
-    background: var(--background-color) !important;
-    backdrop-filter: blur(8px);
-    border-bottom: 1px solid rgba(128, 128, 128, 0.25) !important;
+    display: none !important;
+    height: 0 !important;
+    min-height: 0 !important;
+    visibility: hidden !important;
+}}
+.stApp:has(.kahoot-login-marker) .main {{
+    padding-top: 0 !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stDecoration"] {{
+    display: none !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) {{
+    height: 0 !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    border: none !important;
 }}
 .stApp:has(.kahoot-login-marker) .main .block-container {{
     padding: 0 !important;
@@ -416,6 +435,27 @@ LOGIN_PAGE_CSS = f"""
     margin: 0 !important;
 }}
 .kahoot-login-marker {{ display: none !important; }}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) {{
+    position: fixed !important;
+    top: 1rem !important;
+    right: 1.25rem !important;
+    z-index: 60 !important;
+    width: auto !important;
+    max-width: 11rem !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) > [data-testid="stColumn"] {{
+    width: auto !important;
+    flex: 0 0 auto !important;
+    padding: 0 !important;
+    min-height: unset !important;
+}}
+.stApp:has(.kahoot-login-marker) [data-testid="stHorizontalBlock"]:has(.kahoot-login-theme-marker) [data-testid="stSegmentedControl"] {{
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12) !important;
+}}
+.kahoot-login-theme-marker {{ display: none !important; }}
 .kahoot-login-row {{
     position: fixed !important;
     top: 0 !important;
@@ -444,7 +484,7 @@ LOGIN_PAGE_CSS = f"""
     max-width: 50% !important;
 }}
 .kahoot-login-row > [data-testid="stColumn"]:last-child {{
-    background: {LOGIN_DARK} !important;
+    background: var(--kahoot-login-panel-right) !important;
     flex: 0 0 50% !important;
     width: 50% !important;
     max-width: 50% !important;
@@ -507,7 +547,8 @@ LOGIN_PAGE_CSS = f"""
 }}
 .kahoot-google-visual {{
     width: 42px; height: 42px; border-radius: 50%;
-    border: 1px solid #3d4f66; background-color: #ffffff;
+    border: 1px solid var(--kahoot-login-google-border);
+    background-color: var(--kahoot-login-google-bg);
     background-image: url("{GOOGLE_ICON_SVG}");
     background-size: 22px; background-repeat: no-repeat; background-position: center;
     margin: 0 auto; pointer-events: none;
@@ -527,36 +568,36 @@ LOGIN_PAGE_CSS = f"""
 }}
 .kahoot-form-wrap {{ width: 100%; max-width: 360px; margin: 0 auto; }}
 .kahoot-form-title {{
-    color: #c8d6e0; font-size: 1.85rem; font-weight: 700;
+    color: var(--kahoot-login-form-title); font-size: 1.85rem; font-weight: 700;
     text-align: center; margin: 0 0 1.25rem;
     font-family: "Segoe UI", system-ui, sans-serif;
 }}
 .kahoot-form-sub {{
-    color: #7f8c9a; font-size: 0.85rem; text-align: center; margin: 0 0 1rem;
+    color: var(--kahoot-login-form-sub); font-size: 0.85rem; text-align: center; margin: 0 0 1rem;
 }}
 .kahoot-or-line {{
     display: flex; align-items: center; gap: 0.75rem;
-    margin: 1.25rem 0; color: #6b7c93; font-size: 0.82rem;
+    margin: 1.25rem 0; color: var(--kahoot-login-form-muted); font-size: 0.82rem;
 }}
 .kahoot-or-line::before, .kahoot-or-line::after {{
-    content: ""; flex: 1; height: 1px; background: #3d4f66;
+    content: ""; flex: 1; height: 1px; background: var(--kahoot-login-or-line);
 }}
 .kahoot-footnote {{
-    color: #6b7c93; font-size: 0.78rem; text-align: center;
+    color: var(--kahoot-login-form-muted); font-size: 0.78rem; text-align: center;
     margin-top: 1.25rem; line-height: 1.5;
 }}
 .kahoot-login-row > [data-testid="stColumn"]:last-child label {{
-    color: #aabbc8 !important; font-weight: 600 !important;
+    color: var(--kahoot-login-label) !important; font-weight: 600 !important;
 }}
 .kahoot-login-row > [data-testid="stColumn"]:last-child input {{
-    background: {LOGIN_INPUT_BG} !important;
-    border: 1px solid #3d4f66 !important;
-    color: #e8edf2 !important;
+    background: var(--kahoot-login-input-bg) !important;
+    border: 1px solid var(--kahoot-login-input-border) !important;
+    color: var(--kahoot-login-input-text) !important;
     border-radius: 8px !important;
 }}
 .kahoot-login-row > [data-testid="stColumn"]:last-child .stTextInput > div > div {{
-    background: {LOGIN_INPUT_BG} !important;
-    border: 1px solid #3d4f66 !important;
+    background: var(--kahoot-login-input-bg) !important;
+    border: 1px solid var(--kahoot-login-input-border) !important;
     border-radius: 8px !important;
 }}
 .kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stFormSubmitButton"] > button {{
@@ -572,10 +613,14 @@ LOGIN_PAGE_CSS = f"""
     background: #3d7a72 !important;
 }}
 .kahoot-login-row > [data-testid="stColumn"]:last-child .stButton > button[kind="secondary"] {{
-    background: {LOGIN_INPUT_BG} !important;
-    color: #c5d0dc !important;
-    border: 1px solid #3d4f66 !important;
+    background: var(--kahoot-login-secondary-btn-bg) !important;
+    color: var(--kahoot-login-secondary-btn-text) !important;
+    border: 1px solid var(--kahoot-login-input-border) !important;
     border-radius: 25px !important;
+}}
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stMarkdownContainer"] p,
+.kahoot-login-row > [data-testid="stColumn"]:last-child [data-testid="stCaption"] {{
+    color: var(--kahoot-login-form-muted) !important;
 }}
 @media (max-width: 768px) {{
     .kahoot-login-row {{
@@ -594,71 +639,122 @@ LOGIN_PAGE_CSS = f"""
 """
 
 
-APP_HEADER_CSS = """
-header[data-testid="stHeader"] {
-    background: var(--background-color) !important;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.25) !important;
-}
-header[data-testid="stHeader"] [data-testid="stToolbar"] button {
-    color: var(--text-color) !important;
-}
-header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover {
-    color: var(--primary-color) !important;
-    background: color-mix(in srgb, var(--primary-color) 12%, transparent) !important;
-}
+APP_CHROME_CSS = """
 footer { visibility: hidden; }
 """
 
-SESSION_BAR_CSS = f"""
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) {{
-    background: var(--secondary-background-color) !important;
-    border: 1px solid rgba(128, 128, 128, 0.22) !important;
-    border-radius: 12px !important;
-    margin-bottom: 1rem !important;
-    padding: 0.55rem 0.85rem !important;
-    box-shadow: 0 1px 0 rgba(128, 128, 128, 0.08) inset;
+APP_HIDE_TOOLBAR_CSS = """
+header[data-testid="stHeader"] [data-testid="stMainMenu"],
+header[data-testid="stHeader"] [data-testid="stToolbarActions"] {
+    display: none !important;
+}
+header[data-testid="stHeader"] {
+    background: var(--background-color) !important;
+    border-bottom: 1px solid var(--kahoot-border) !important;
+    box-shadow: none !important;
+}
+[data-testid="stExpandSidebarButton"],
+[data-testid="stExpandSidebarButton"] button,
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stSidebarCollapseButton"] button {
+    color: var(--kahoot-chrome-btn-icon) !important;
+    background: var(--kahoot-chrome-btn-bg) !important;
+    border: 1.5px solid var(--kahoot-chrome-btn-border) !important;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1) !important;
+}
+[data-testid="stExpandSidebarButton"] span,
+[data-testid="stExpandSidebarButton"] svg,
+[data-testid="stExpandSidebarButton"] path,
+[data-testid="stExpandSidebarButton"] *,
+[data-testid="stSidebarCollapseButton"] span,
+[data-testid="stSidebarCollapseButton"] svg,
+[data-testid="stSidebarCollapseButton"] path,
+[data-testid="stSidebarCollapseButton"] * {
+    color: var(--kahoot-chrome-btn-icon) !important;
+    fill: var(--kahoot-chrome-btn-icon) !important;
+    stroke: var(--kahoot-chrome-btn-icon) !important;
+    -webkit-text-fill-color: var(--kahoot-chrome-btn-icon) !important;
+}
+"""
+
+SIDEBAR_SESSION_CSS = f"""
+section[data-testid="stSidebar"]:has(.kahoot-sidebar-shell) {{
+    padding-top: 0.25rem !important;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) > div > [data-testid="stVerticalBlock"] {{
-    gap: 0 !important;
+section[data-testid="stSidebar"] .kahoot-sidebar-account-block {{
+    margin-top: 0.65rem;
+    padding: 0.75rem 0.35rem 0.5rem;
+    border-top: 1px solid var(--kahoot-border);
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] {{
-    align-items: center !important;
-    gap: 0.75rem !important;
+section[data-testid="stSidebar"]:has(.kahoot-sidebar-shell) .kahoot-account-menu-anchor ~ [data-testid="stVerticalBlock"] [data-testid="stPopover"],
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] {{
+    width: 100% !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    margin-bottom: 0.15rem !important;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {{
-    min-width: 0 !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:last-child {{
-    flex: 0 0 auto !important;
-    width: auto !important;
-    min-width: 2.75rem !important;
-    display: flex !important;
-    justify-content: flex-end !important;
-    align-items: center !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-menu-marker) + .element-container [data-testid="stPopover"] {{
-    width: auto !important;
-    margin-left: auto !important;
-}}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-menu-marker) + .element-container [data-testid="stPopover"] > button {{
-    background: transparent !important;
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] > button,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] .stButton > button,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button {{
+    background: var(--background-color) !important;
     color: var(--text-color) !important;
-    border: 1px solid rgba(128, 128, 128, 0.35) !important;
-    border-radius: 8px !important;
-    font-weight: 700 !important;
-    font-size: 1.15rem !important;
-    line-height: 1 !important;
-    padding: 0 !important;
-    min-width: 2.75rem !important;
-    min-height: 2.75rem !important;
-    width: 2.75rem !important;
-    height: 2.75rem !important;
+    border: 1px solid var(--kahoot-border-strong) !important;
+    border-radius: 10px !important;
+    font-weight: 600 !important;
+    font-size: 0.86rem !important;
+    line-height: 1.2 !important;
+    padding: 0.5rem 0.8rem !important;
+    min-height: 2.5rem !important;
+    width: 100% !important;
     letter-spacing: 0 !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 0.45rem !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .element-container:has(.kahoot-menu-marker) + .element-container [data-testid="stPopover"] > button:hover {{
-    background: color-mix(in srgb, var(--primary-color) 10%, transparent) !important;
-    border-color: color-mix(in srgb, var(--primary-color) 45%, transparent) !important;
-    color: var(--primary-color) !important;
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] .stButton {{
+    width: 100% !important;
+}}
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button [data-testid="stIconMaterial"],
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button span[data-testid="stIconMaterial"] {{
+    color: {LOGIN_TEAL} !important;
+}}
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] > button:hover,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] .stButton > button:hover,
+section[data-testid="stSidebar"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button:hover {{
+    background: color-mix(in srgb, {LOGIN_TEAL} 9%, var(--background-color)) !important;
+    color: var(--text-color) !important;
+    border-color: {LOGIN_TEAL} !important;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.07) !important;
+}}
+section[data-testid="stSidebar"] .kahoot-account-menu-anchor {{
+    display: none !important;
+}}
+/* Sidebar recolhida: só ícone do menu, centralizado */
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button {{
+    padding: 0.45rem !important;
+    min-width: 2.5rem !important;
+    width: 2.5rem !important;
+    min-height: 2.5rem !important;
+    border-radius: 0.65rem !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button p,
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-account-menu-anchor) [data-testid="stPopover"] button span:not([data-testid="stIconMaterial"]) {{
+    display: none !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"] .kahoot-sidebar-account-block {{
+    display: none !important;
+}}
+section[data-testid="stSidebar"][aria-expanded="false"]:has(.kahoot-sidebar-shell) hr {{
+    display: none !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) [data-testid="stSegmentedControl"] {{
+    width: 100% !important;
+    margin-bottom: 0.35rem !important;
 }}
 .kahoot-session-bar {{
     display: flex;
@@ -687,6 +783,7 @@ SESSION_BAR_CSS = f"""
     flex-direction: column;
     gap: 0.15rem;
     min-width: 0;
+    flex: 1 1 auto;
 }}
 .kahoot-session-line {{
     display: flex;
@@ -695,13 +792,13 @@ SESSION_BAR_CSS = f"""
     gap: 0.5rem;
 }}
 .kahoot-session-name {{
-    color: var(--text-color) !important;
+    color: var(--text-color, #31333F);
     font-size: 0.95rem;
     font-weight: 700;
     line-height: 1.2;
 }}
 .kahoot-session-email {{
-    color: rgba(128, 128, 128, 0.95);
+    color: var(--kahoot-text-muted, #5c6370);
     font-size: 0.78rem;
     line-height: 1.25;
     overflow: hidden;
@@ -722,44 +819,36 @@ SESSION_BAR_CSS = f"""
     border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
 }}
 .kahoot-session-role--student {{
-    background: rgba(99, 132, 168, 0.16);
-    color: #6384a8;
-    border-color: rgba(74, 98, 120, 0.55);
+    background: var(--kahoot-student-role-bg);
+    color: var(--kahoot-student-role-text);
+    border-color: var(--kahoot-student-role-border);
 }}
-[data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) .kahoot-logout-confirm {{
+section[data-testid="stSidebar"] .kahoot-logout-confirm {{
     margin-top: 0.65rem;
     padding-top: 0.65rem;
-    border-top: 1px solid rgba(128, 128, 128, 0.2);
+    border-top: 1px solid var(--kahoot-border);
 }}
-section[data-testid="stSidebar"] .kahoot-sidebar-account {{
-    padding: 0.5rem 0 0.85rem;
-    border-bottom: 1px solid rgba(128, 128, 128, 0.22);
-    margin-bottom: 0.75rem;
-}}
-section[data-testid="stSidebar"] .kahoot-session-bar {{
-    gap: 0.65rem;
-}}
-section[data-testid="stSidebar"] .kahoot-session-avatar {{
-    width: 2.15rem;
-    height: 2.15rem;
+section[data-testid="stSidebar"] .kahoot-sidebar-nav-title {{
     font-size: 0.72rem;
-}}
-section[data-testid="stSidebar"] .kahoot-session-name {{
-    font-size: 0.88rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--kahoot-text-subtle, #6b7280);
+    margin: 0.35rem 0 0.5rem;
 }}
 .kahoot-menu-panel {{
     min-width: 12.5rem;
     padding: 0.1rem 0 0.15rem;
 }}
 .kahoot-menu-account-name {{
-    color: var(--text-color);
+    color: var(--text-color, #31333F);
     font-size: 0.92rem;
     font-weight: 700;
     line-height: 1.25;
     margin-bottom: 0.2rem;
 }}
 .kahoot-menu-role {{
-    color: rgba(128, 128, 128, 0.95);
+    color: var(--kahoot-text-muted, #5c6370);
     font-size: 0.72rem;
     font-weight: 600;
     letter-spacing: 0.04em;
@@ -767,18 +856,25 @@ section[data-testid="stSidebar"] .kahoot-session-name {{
     margin-bottom: 0.15rem;
 }}
 .kahoot-menu-email {{
-    color: rgba(128, 128, 128, 0.95);
+    color: var(--kahoot-text-muted, #5c6370);
     font-size: 0.78rem;
     line-height: 1.3;
     word-break: break-word;
 }}
 [data-testid="stPopoverBody"]:has(.kahoot-menu-panel) {{
     min-width: 13rem !important;
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .stButton > button {{
+    background-color: var(--secondary-background-color) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--kahoot-border-strong) !important;
 }}
 [data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .element-container:has(.kahoot-menu-logout-marker) + .element-container .stButton > button {{
     background: transparent !important;
-    color: #c75555 !important;
-    border: 1px solid rgba(199, 85, 85, 0.55) !important;
+    color: var(--kahoot-danger) !important;
+    border: 1px solid color-mix(in srgb, var(--kahoot-danger) 55%, transparent) !important;
     border-radius: 8px !important;
     font-weight: 600 !important;
     font-size: 0.82rem !important;
@@ -787,21 +883,24 @@ section[data-testid="stSidebar"] .kahoot-session-name {{
     height: 2.75rem !important;
 }}
 [data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .element-container:has(.kahoot-menu-logout-marker) + .element-container .stButton > button:hover {{
-    background: rgba(196, 85, 85, 0.12) !important;
-    border-color: #c45555 !important;
-    color: #b91c1c !important;
+    background: var(--kahoot-danger-bg-hover) !important;
+    border-color: var(--kahoot-danger) !important;
+    color: var(--kahoot-danger-hover) !important;
 }}
-@media (max-width: 640px) {{
-    [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) [data-testid="stHorizontalBlock"] > [data-testid="stColumn"]:first-child {{
-        flex: 1 1 auto !important;
-        min-width: 0 !important;
-    }}
-    .kahoot-session-name {{
-        font-size: 0.88rem !important;
-    }}
-    .kahoot-session-email {{
-        font-size: 0.72rem !important;
-    }}
+.kahoot-menu-section-title {{
+    color: var(--kahoot-text-subtle, #6b7280);
+    font-size: 0.68rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    margin: 0.15rem 0 0.35rem;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) [data-testid="stRadio"] label {{
+    font-size: 0.84rem !important;
+}}
+[data-testid="stPopoverBody"]:has(.kahoot-menu-panel) .element-container:has(.kahoot-menu-action-marker) + .element-container .stButton > button {{
+    min-height: 2.5rem !important;
+    font-size: 0.82rem !important;
 }}
 """
 
@@ -846,41 +945,51 @@ def _session_menu_account_html(name: str, role_label: str, email: str | None) ->
     )
 
 
+def _apply_app_chrome(*, hide_toolbar: bool = False):
+    css = APP_CHROME_CSS + (APP_HIDE_TOOLBAR_CSS if hide_toolbar else "")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)
+
+
+def _render_account_settings_menu():
+    render_theme_selector(compact=True)
+    st.markdown('<span class="kahoot-menu-action-marker"></span>', unsafe_allow_html=True)
+    if st.button("Recarregar aplicativo", key="account_menu_rerun", use_container_width=True):
+        st.rerun()
+
+
 def _clear_login_page_styles():
-    """Remove CSS da login injetado no documento pai (impede tema claro após autenticar)."""
-    components.html(
+    """Remove CSS da login (impede tema claro após autenticar)."""
+    st.html(
         """
         <script>
         (function () {
-            const doc = window.parent.document;
-            const style = doc.getElementById("kahoot-login-style");
+            const style = document.getElementById("kahoot-login-style");
             if (style) style.remove();
-            doc.querySelectorAll(".kahoot-login-row").forEach((row) => {
+            document.querySelectorAll(".kahoot-login-row").forEach((row) => {
                 row.classList.remove("kahoot-login-row");
             });
         })();
         </script>
         """,
-        height=0,
+        unsafe_allow_javascript=True,
     )
 
 
 def _apply_login_styles_in_parent():
     css_json = json.dumps(LOGIN_PAGE_CSS)
-    components.html(
+    st.html(
         f"""
         <script>
         (function() {{
             function applyLoginLayout() {{
-                const doc = window.parent.document;
-                let style = doc.getElementById("kahoot-login-style");
+                let style = document.getElementById("kahoot-login-style");
                 if (!style) {{
-                    style = doc.createElement("style");
+                    style = document.createElement("style");
                     style.id = "kahoot-login-style";
-                    doc.head.appendChild(style);
+                    document.head.appendChild(style);
                 }}
                 style.textContent = {css_json};
-                doc.querySelectorAll(".kahoot-login-marker").forEach((marker) => {{
+                document.querySelectorAll(".kahoot-login-marker").forEach((marker) => {{
                     const row = marker.closest('[data-testid="stHorizontalBlock"]');
                     if (row) row.classList.add("kahoot-login-row");
                 }});
@@ -891,7 +1000,7 @@ def _apply_login_styles_in_parent():
         }})();
         </script>
         """,
-        height=0,
+        unsafe_allow_javascript=True,
     )
 
 
@@ -1033,8 +1142,6 @@ def render_login_signin_panel():
 
 def render_login():
     logout_message = st.session_state.pop("logout_message", None)
-    if logout_message:
-        st.success(logout_message)
 
     view = st.session_state.auth_view
     if view == "signup":
@@ -1052,7 +1159,12 @@ def render_login():
         switch_key = "go_signup"
         switch_target = "signup"
 
+    _apply_app_chrome()
     st.markdown(f"<style>{LOGIN_PAGE_CSS}</style>", unsafe_allow_html=True)
+    _, theme_col = st.columns([4, 1])
+    with theme_col:
+        st.markdown('<span class="kahoot-login-theme-marker"></span>', unsafe_allow_html=True)
+        render_theme_selector(compact=True, icon_only=True)
 
     col_left, col_right = st.columns(2, gap="small")
 
@@ -1069,6 +1181,8 @@ def render_login():
             st.rerun()
 
     with col_right:
+        if logout_message:
+            st.success(logout_message)
         if view == "signup":
             render_login_signup_panel()
         else:
@@ -1092,7 +1206,7 @@ def _session_user_display() -> tuple[str, str, str | None]:
 
 
 def render_session_controls():
-    """Barra de sessão com perfil e menu de conta. Tema via menu nativo do Streamlit."""
+    """Conta, menu e logout na barra lateral esquerda."""
     name, role_label, email = _session_user_display()
     role_badge_class = (
         "kahoot-session-role"
@@ -1101,7 +1215,8 @@ def render_session_controls():
     )
     logout_label = _logout_button_label()
 
-    st.markdown(f"<style>{APP_HEADER_CSS}{SESSION_BAR_CSS}</style>", unsafe_allow_html=True)
+    _apply_app_chrome(hide_toolbar=True)
+    st.markdown(f"<style>{SIDEBAR_SESSION_CSS}</style>", unsafe_allow_html=True)
     _clear_login_page_styles()
 
     if email:
@@ -1114,51 +1229,106 @@ def render_session_controls():
     profile_html = _session_profile_html(name, role_label, role_badge_class, email_html)
     menu_account_html = _session_menu_account_html(name, role_label, email)
 
-    with st.container(border=True):
-        st.markdown('<span class="kahoot-session-shell"></span>', unsafe_allow_html=True)
+    with st.sidebar:
+        st.markdown('<span class="kahoot-sidebar-shell"></span>', unsafe_allow_html=True)
         if st.session_state.get("confirm_logout"):
-            st.markdown(profile_html, unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="kahoot-sidebar-account-block">{profile_html}</div>',
+                unsafe_allow_html=True,
+            )
             st.markdown('<div class="kahoot-logout-confirm"></div>', unsafe_allow_html=True)
             st.warning(_logout_confirmation_message())
-            cancel_col, confirm_col = st.columns(2)
-            with cancel_col:
-                if st.button("Cancelar", key="logout_cancel", use_container_width=True):
-                    st.session_state.confirm_logout = False
-                    st.rerun()
-            with confirm_col:
+            if st.button("Cancelar", key="logout_cancel", use_container_width=True):
+                st.session_state.confirm_logout = False
+                st.rerun()
+            if st.button(
+                logout_label,
+                key="logout_confirm",
+                use_container_width=True,
+                type="primary",
+            ):
+                logout()
+        else:
+            st.markdown('<span class="kahoot-account-menu-anchor"></span>', unsafe_allow_html=True)
+            with st.popover(
+                "Menu",
+                help="Conta, aparência, recarregar e sair",
+                key="kahoot_account_menu",
+                icon=":material/menu:",
+                type="secondary",
+                use_container_width=True,
+            ):
+                st.markdown(menu_account_html, unsafe_allow_html=True)
+                st.divider()
+                _render_account_settings_menu()
+                st.divider()
+                st.markdown(
+                    '<span class="kahoot-menu-logout-marker"></span>',
+                    unsafe_allow_html=True,
+                )
                 if st.button(
                     logout_label,
-                    key="logout_confirm",
+                    key="logout_menu",
                     use_container_width=True,
-                    type="primary",
+                    type="secondary",
                 ):
-                    logout()
-        else:
-            profile_col, menu_col = st.columns([11, 1], vertical_alignment="center", gap="medium")
-            with profile_col:
-                st.markdown(profile_html, unsafe_allow_html=True)
-            with menu_col:
-                st.markdown('<span class="kahoot-menu-marker"></span>', unsafe_allow_html=True)
-                with st.popover("⋮", help="Menu da conta"):
-                    st.markdown(menu_account_html, unsafe_allow_html=True)
-                    st.divider()
-                    st.markdown(
-                        '<span class="kahoot-menu-logout-marker"></span>',
-                        unsafe_allow_html=True,
-                    )
-                    if st.button(
-                        logout_label,
-                        key="logout_menu",
-                        use_container_width=True,
-                        type="secondary",
-                    ):
-                        _request_logout()
+                    _request_logout()
+            st.markdown(
+                f'<div class="kahoot-sidebar-account-block">{profile_html}</div>',
+                unsafe_allow_html=True,
+            )
 
-    st.sidebar.markdown(
-        f'<div class="kahoot-sidebar-account">{profile_html}</div>',
-        unsafe_allow_html=True,
+        st.divider()
+
+
+def _professor_nav_sections(show_admin_tab: bool) -> list[tuple[str, str]]:
+    sections = [
+        ("materials", "📚 Materiais"),
+        ("edit", "✏️ Editar questões"),
+        ("exams", "📝 Provas"),
+        ("students", "👥 Alunos cadastrados"),
+        ("results", "📊 Resultados"),
+        ("config", "🔐 Conta"),
+    ]
+    if show_admin_tab:
+        sections.append(("admin", "🛡️ Aprovações"))
+    return sections
+
+
+def render_professor_sidebar_nav():
+    current_user = st.session_state.get("current_user") or {}
+    show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
+        current_user.get("is_admin")
+    )
+    sections = _professor_nav_sections(show_admin_tab)
+    section_keys = [key for key, _ in sections]
+    section_labels = {key: label for key, label in sections}
+
+    if st.session_state.professor_section not in section_keys:
+        st.session_state.professor_section = section_keys[0]
+
+    st.sidebar.markdown('<div class="kahoot-sidebar-nav-title">Navegação</div>', unsafe_allow_html=True)
+    st.sidebar.radio(
+        "Seção do professor",
+        options=section_keys,
+        format_func=lambda key: section_labels[key],
+        key="professor_section",
+        label_visibility="collapsed",
     )
     st.sidebar.divider()
+
+
+def render_student_sidebar_nav():
+    st.sidebar.markdown('<div class="kahoot-sidebar-nav-title">Navegação</div>', unsafe_allow_html=True)
+    st.sidebar.radio(
+        "Seção do aluno",
+        options=["quiz", "exam"],
+        format_func=lambda key: "🎮 Quiz" if key == "quiz" else "📝 Provas",
+        key="student_section",
+        label_visibility="collapsed",
+    )
+    st.sidebar.divider()
+    render_student_register_sidebar()
 
 
 def render_admin_approvals_tab():
@@ -1554,24 +1724,12 @@ def render_professor_panel():
     show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
         current_user.get("is_admin")
     )
-    tab_labels = [
-        "📚 Materiais",
-        "✏️ Editar questões",
-        "📝 Provas",
-        "👥 Alunos cadastrados",
-        "📊 Resultados",
-        "🔐 Conta",
-    ]
-    if show_admin_tab:
-        tab_labels.append("🛡️ Aprovações")
-    tabs = st.tabs(tab_labels)
-    tab_mat, tab_edit, tab_exams, tab_students, tab_results, tab_config = tabs[:6]
-    tab_admin = tabs[6] if show_admin_tab else None
+    section = st.session_state.professor_section
 
     materials = list_materials()
     active_ids = set(get_active_material_ids())
 
-    with tab_mat:
+    if section == "materials":
         st.caption("Vários materiais podem ficar ativos ao mesmo tempo para os alunos.")
         st.subheader("Gerenciar materiais")
         new_title = st.text_input("Título do novo material", placeholder="Ex.: Lógica - Aula 3")
@@ -1619,7 +1777,7 @@ def render_professor_panel():
                             st.session_state.professor_edit_id = None
                         st.rerun()
 
-    with tab_edit:
+    elif section == "edit":
         if not materials:
             st.info("Crie um material na aba Materiais primeiro.")
         else:
@@ -1687,13 +1845,13 @@ def render_professor_panel():
                         st.success("Material desativado.")
                     st.rerun()
 
-    with tab_exams:
+    elif section == "exams":
         render_exams_tab()
 
-    with tab_students:
+    elif section == "students":
         render_students_tab()
 
-    with tab_results:
+    elif section == "results":
         if not materials:
             st.info("Sem materiais para analisar.")
         else:
@@ -1726,12 +1884,11 @@ def render_professor_panel():
                     st.success("Resultados removidos.")
                     st.rerun()
 
-    with tab_config:
+    elif section == "config":
         render_auth_config_tab()
 
-    if tab_admin is not None:
-        with tab_admin:
-            render_admin_approvals_tab()
+    elif section == "admin" and show_admin_tab:
+        render_admin_approvals_tab()
 
 
 # ---------------------------
@@ -1746,12 +1903,10 @@ def render_student_register_sidebar():
 
 def render_student_panel():
     st.title("👨‍🎓 Área do Aluno")
-    render_student_register_sidebar()
 
-    tab_quiz, tab_prova = st.tabs(["🎮 Quiz", "📝 Provas"])
-    with tab_quiz:
+    if st.session_state.student_section == "quiz":
         render_student_quiz_tab()
-    with tab_prova:
+    else:
         render_student_exam_tab()
 
 
@@ -2110,6 +2265,7 @@ def configure_streamlit_page():
 def main():
     configure_streamlit_page()
     init_session_state()
+    finalize_ui_theme()
 
     if st.session_state.role is None:
         render_login()
@@ -2118,8 +2274,10 @@ def main():
     render_session_controls()
 
     if st.session_state.role == "professor":
+        render_professor_sidebar_nav()
         render_professor_panel()
     else:
+        render_student_sidebar_nav()
         render_student_panel()
 
 

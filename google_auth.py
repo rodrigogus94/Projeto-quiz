@@ -58,8 +58,17 @@ def is_streamlit_cloud() -> bool:
     return bool(
         os.environ.get("STREAMLIT_SHARING_MODE")
         or os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud"
-        or os.environ.get("STREAMLIT_SERVER_ADDRESS") == "0.0.0.0"
     )
+
+
+def _normalize_redirect_uri(uri: str) -> str:
+    """Garante scheme http(s) — evita 'localhost:8501' sem protocolo."""
+    value = (uri or "").strip()
+    if not value:
+        return value
+    if not value.startswith(("http://", "https://")):
+        value = f"http://{value}"
+    return value.rstrip("/")
 
 
 def _get_secret_section(key: str) -> dict:
@@ -100,27 +109,21 @@ def load_oauth_from_json(path: Path) -> dict | None:
 
 def _resolve_redirect_uri(redirect_uris: list[str], override: str = "") -> str:
     if override and not _is_placeholder(override):
-        return override.strip()
+        return _normalize_redirect_uri(override)
 
     if not redirect_uris:
         return "http://localhost:8501"
     if len(redirect_uris) == 1:
-        return redirect_uris[0]
+        return _normalize_redirect_uri(redirect_uris[0])
 
-    import os
-
-    on_streamlit_cloud = bool(
-        os.environ.get("STREAMLIT_SHARING_MODE")
-        or os.environ.get("STREAMLIT_RUNTIME_ENV") == "cloud"
-    )
-    if on_streamlit_cloud:
+    if is_streamlit_cloud():
         for uri in redirect_uris:
             if "streamlit.app" in uri:
-                return uri
+                return _normalize_redirect_uri(uri)
     for uri in redirect_uris:
-        if "localhost" in uri:
-            return uri
-    return redirect_uris[0]
+        if "localhost" in uri or "127.0.0.1" in uri:
+            return _normalize_redirect_uri(uri)
+    return _normalize_redirect_uri(redirect_uris[0])
 
 
 def get_google_oauth_config() -> dict:
@@ -146,9 +149,9 @@ def get_google_oauth_config() -> dict:
         pass
 
     if secrets_cfg.get("redirect_uri") and not _is_placeholder(secrets_cfg["redirect_uri"]):
-        redirect_uri = secrets_cfg["redirect_uri"].strip()
+        redirect_uri = _normalize_redirect_uri(secrets_cfg["redirect_uri"])
     elif deploy_url and not _is_placeholder(deploy_url):
-        redirect_uri = deploy_url.strip().rstrip("/")
+        redirect_uri = _normalize_redirect_uri(deploy_url)
     else:
         redirect_uri = _resolve_redirect_uri(redirect_uris, "")
 
@@ -174,8 +177,21 @@ def oauth_diagnosis() -> list[str]:
         issues.append("Falta `client_id` (em Secrets ou no JSON local).")
     if not cfg.get("client_secret"):
         issues.append("Falta `client_secret` (em Secrets ou no JSON local).")
-    if not cfg.get("redirect_uri"):
+    redirect_uri = cfg.get("redirect_uri", "")
+    if not redirect_uri:
         issues.append("Falta `redirect_uri` (URL do app, ex.: https://seu-app.streamlit.app).")
+    else:
+        issues.append(
+            f"URI de redirect em uso: `{redirect_uri}`. "
+            "No Google Cloud → Credentials → seu cliente OAuth → "
+            "**Authorized redirect URIs**, cadastre esse endereço **exatamente igual** "
+            "(incluindo http/https, sem barra no final)."
+        )
+        if not is_streamlit_cloud() and "localhost" not in redirect_uri and "127.0.0.1" not in redirect_uri:
+            issues.append(
+                "Local: o redirect parece ser de produção. "
+                "Use `redirect_uri = \"http://localhost:8501\"` em `.streamlit/secrets.toml`."
+            )
 
     if is_streamlit_cloud():
         json_exists = Path(cfg.get("client_secret_file", "")).exists()
@@ -331,9 +347,18 @@ def render_oauth_setup_help():
         )
         st.code(CLOUD_SECRETS_TEMPLATE.strip(), language="toml")
     else:
+        cfg = get_google_oauth_config()
+        redirect_uri = cfg.get("redirect_uri") or "http://localhost:8501"
         st.info(
             "Local: coloque o JSON em `.streamlit/google_client_secret.json` "
             "e configure `.streamlit/secrets.toml` (ambos ignorados pelo Git)."
+        )
+        st.markdown(
+            f"**Redirect URI deste app:** `{redirect_uri}`  \n"
+            "No [Google Cloud Console](https://console.cloud.google.com/apis/credentials), "
+            "abra seu cliente OAuth (tipo **Web application**) e adicione esse URI em "
+            "**Authorized redirect URIs**. Erro `redirect_uri_mismatch` = URI não cadastrado "
+            "ou diferente (ex.: falta `http://`, ou `localhost` vs `127.0.0.1`)."
         )
 
     issues = oauth_diagnosis()

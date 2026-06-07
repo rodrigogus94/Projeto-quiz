@@ -1,5 +1,6 @@
+# Tema padrão do Streamlit; a alternância Claro/Escuro do app usa CSS em ui_theme.py.
 [theme]
-primaryColor = "#458588"
+base = "light"
 
 [theme.light]
 primaryColor = "#458588"
@@ -17,4 +18,5 @@ textColor = "#e8edf2"
 gatherUsageStats = false
 
 [client]
-toolbarMode = "auto"
+# Esconde o menu do canto superior; opções ficam no menu da conta (sidebar).
+toolbarMode = "minimal"
