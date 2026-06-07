@@ -392,17 +392,40 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div {
     border-radius: 0.5rem !important;
     background-color: var(--background-color) !important;
 }
-[data-testid="stSelectbox"] [data-baseweb="select"] {
+[data-testid="stSelectbox"] [data-baseweb="select"],
+[data-testid="stSelectbox"] [data-baseweb="select"] > div,
+[data-testid="stSelectbox"] [data-baseweb="select"] input,
+[data-testid="stSelectbox"] div[role="combobox"],
+[data-testid="stSelectbox"] div[role="button"] {
     border: 1px solid var(--kahoot-border-strong) !important;
     border-radius: 0.5rem !important;
     background-color: var(--background-color) !important;
-}
-[data-testid="stSelectbox"] [data-baseweb="select"] span {
     color: var(--text-color) !important;
 }
-[data-testid="stMultiSelect"] [data-baseweb="select"] {
+[data-testid="stSelectbox"] [data-baseweb="select"] span,
+[data-testid="stSelectbox"] [data-baseweb="select"] svg,
+[data-testid="stSelectbox"] [data-baseweb="select"] path {
+    color: var(--text-color) !important;
+    fill: var(--text-color) !important;
+}
+[data-baseweb="popover"] [data-baseweb="menu"],
+[data-baseweb="popover"] ul,
+[data-baseweb="popover"] li,
+[data-testid="stSelectboxVirtualDropdown"],
+[data-testid="stSelectboxVirtualDropdownEmpty"] {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}
+[data-baseweb="popover"] li[aria-selected="true"],
+[data-baseweb="popover"] li:hover {
+    background-color: var(--secondary-background-color) !important;
+}
+[data-testid="stMultiSelect"] [data-baseweb="select"],
+[data-testid="stMultiSelect"] [data-baseweb="tag"] {
     border: 1px solid var(--kahoot-border-strong) !important;
     border-radius: 0.5rem !important;
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
 }
 [data-testid="stVerticalBlockBorderWrapper"] {
     border: 1px solid var(--kahoot-border-strong) !important;
@@ -418,9 +441,31 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div {
 [data-testid="stExpander"] summary p {
     color: var(--text-color) !important;
 }
-[data-testid="stFileUploader"] section {
+[data-testid="stFileUploader"],
+[data-testid="stFileUploader"] section,
+[data-testid="stFileUploaderDropzone"],
+[data-testid="stFileUploaderDropzone"] > div,
+[data-testid="stFileUploaderDropzoneInstructions"] {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+    border-color: var(--kahoot-border-strong) !important;
+}
+[data-testid="stFileUploader"] section,
+[data-testid="stFileUploaderDropzone"] {
     border: 1px dashed var(--kahoot-border-strong) !important;
     border-radius: 0.5rem !important;
+}
+[data-testid="stFileUploaderDropzone"] button,
+[data-testid="stFileUploader"] button,
+[data-testid="stFileUploader"] [data-testid="stBaseButton-secondary"] {
+    background-color: var(--secondary-background-color) !important;
+    color: var(--text-color) !important;
+    border: 1px solid var(--kahoot-border-strong) !important;
+}
+[data-testid="stFileUploaderDropzoneInstructions"] span,
+[data-testid="stFileUploaderDropzoneInstructions"] p,
+[data-testid="stFileUploaderDropzoneInstructions"] div {
+    color: var(--kahoot-text-muted) !important;
 }
 [data-testid="stDataFrame"] {
     border: 1px solid var(--kahoot-border-strong) !important;
@@ -581,19 +626,36 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="tru
 [data-testid="stDataFrame"] ::-webkit-scrollbar-track {
     background: var(--secondary-background-color);
 }
+[data-testid="stBaseButton-secondary"],
+[data-testid="stBaseButton-secondaryBorderless"],
 section[data-testid="stSidebar"] .stButton > button[kind="secondary"],
-section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]),
+section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]),
 [data-testid="stAppViewContainer"] .main .stButton > button[kind="secondary"],
-[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]) {
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]) {
     color: var(--text-color) !important;
     border: 1px solid var(--kahoot-border-strong) !important;
     background-color: var(--secondary-background-color) !important;
 }
+[data-testid="stBaseButton-primary"],
+[data-testid="stBaseButton-primaryFormSubmit"],
 section[data-testid="stSidebar"] .stButton > button[kind="primary"],
-[data-testid="stAppViewContainer"] .main .stButton > button[kind="primary"] {
+section[data-testid="stSidebar"] .stButton > button[kind="primaryFormSubmit"],
+[data-testid="stAppViewContainer"] .main .stButton > button[kind="primary"],
+[data-testid="stAppViewContainer"] .main .stButton > button[kind="primaryFormSubmit"] {
     background-color: var(--primary-color) !important;
     color: #ffffff !important;
     border: 1px solid color-mix(in srgb, var(--primary-color) 70%, transparent) !important;
+}
+[data-testid^="stBaseButton-"] p,
+[data-testid^="stBaseButton-"] span,
+[data-testid^="stBaseButton-"] div {
+    color: inherit !important;
+}
+[data-testid="stBaseButton-secondary"]:hover,
+[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):hover {
+    background-color: color-mix(in srgb, var(--primary-color) 10%, var(--secondary-background-color)) !important;
+    border-color: var(--primary-color) !important;
+    color: var(--text-color) !important;
 }
 [data-testid="stSegmentedControl"] {
     background-color: var(--kahoot-segment-bg) !important;
@@ -808,12 +870,60 @@ def inject_theme_css() -> None:
                     }});
                 }});
             }}
-            paintSidebarChromeButtons();
-            paintDataFrameContainers();
-            setTimeout(paintSidebarChromeButtons, 50);
-            setTimeout(paintDataFrameContainers, 50);
-            setTimeout(paintSidebarChromeButtons, 300);
-            setTimeout(paintDataFrameContainers, 300);
+            function paintThemedWidgets() {{
+                const bg = readThemeVar("--background-color");
+                const text = readThemeVar("--text-color");
+                const secondary = readThemeVar("--secondary-background-color");
+                const border = readThemeVar("--kahoot-border-strong");
+                const muted = readThemeVar("--kahoot-text-muted");
+                const primary = readThemeVar("--primary-color");
+                if (!bg) return;
+                document.querySelectorAll(
+                    '[data-testid="stBaseButton-secondary"], [data-testid="stBaseButton-secondaryBorderless"]'
+                ).forEach((btn) => {{
+                    btn.style.setProperty("background-color", secondary, "important");
+                    btn.style.setProperty("color", text, "important");
+                    btn.style.setProperty("border-color", border, "important");
+                    btn.querySelectorAll("p, span, div").forEach((node) => {{
+                        node.style.setProperty("color", text, "important");
+                    }});
+                }});
+                document.querySelectorAll('[data-testid="stBaseButton-primary"], [data-testid="stBaseButton-primaryFormSubmit"]').forEach((btn) => {{
+                    btn.style.setProperty("background-color", primary, "important");
+                    btn.style.setProperty("color", "#ffffff", "important");
+                    btn.querySelectorAll("p, span, div").forEach((node) => {{
+                        node.style.setProperty("color", "#ffffff", "important");
+                    }});
+                }});
+                document.querySelectorAll(
+                    '[data-testid="stFileUploaderDropzone"], [data-testid="stFileUploader"] section'
+                ).forEach((zone) => {{
+                    zone.style.setProperty("background-color", bg, "important");
+                    zone.style.setProperty("color", text, "important");
+                    zone.style.setProperty("border-color", border, "important");
+                }});
+                document.querySelectorAll('[data-testid="stFileUploaderDropzoneInstructions"]').forEach((el) => {{
+                    el.style.setProperty("color", muted, "important");
+                }});
+                document.querySelectorAll('[data-testid="stSelectbox"] [data-baseweb="select"]').forEach((sel) => {{
+                    sel.style.setProperty("background-color", bg, "important");
+                    sel.style.setProperty("color", text, "important");
+                    sel.style.setProperty("border-color", border, "important");
+                    sel.querySelectorAll("span, div, input").forEach((node) => {{
+                        node.style.setProperty("color", text, "important");
+                        node.style.setProperty("background-color", bg, "important");
+                    }});
+                }});
+            }}
+            function repaintAll() {{
+                paintSidebarChromeButtons();
+                paintDataFrameContainers();
+                paintThemedWidgets();
+            }}
+            repaintAll();
+            setTimeout(repaintAll, 50);
+            setTimeout(repaintAll, 300);
+            setTimeout(repaintAll, 800);
         }})();
         </script>
         """,
