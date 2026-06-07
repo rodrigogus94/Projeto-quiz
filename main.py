@@ -368,16 +368,16 @@ GOOGLE_ICON_SVG = (
 )
 
 LOGIN_PAGE_CSS = f"""
-section[data-testid="stSidebar"], footer {{
+.stApp:has(.kahoot-login-marker) section[data-testid="stSidebar"],
+.stApp:has(.kahoot-login-marker) footer {{
     display: none !important;
 }}
-header[data-testid="stHeader"] {{
-    background: rgba(29, 32, 33, 0.85) !important;
+.stApp:has(.kahoot-login-marker) header[data-testid="stHeader"] {{
+    background: var(--background-color) !important;
     backdrop-filter: blur(8px);
-    border-bottom: 1px solid rgba(61, 79, 102, 0.45) !important;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.25) !important;
 }}
-.stApp {{ background: {LOGIN_DARK} !important; }}
-.main .block-container {{
+.stApp:has(.kahoot-login-marker) .main .block-container {{
     padding: 0 !important;
     max-width: 100% !important;
     margin: 0 !important;
@@ -563,27 +563,27 @@ header[data-testid="stHeader"] {{
 
 APP_HEADER_CSS = """
 header[data-testid="stHeader"] {
-    background: var(--background-color, #1d2021) !important;
+    background: var(--background-color) !important;
     border-bottom: 1px solid rgba(128, 128, 128, 0.25) !important;
 }
 header[data-testid="stHeader"] [data-testid="stToolbar"] button {
-    color: var(--text-color, #c8d6e0) !important;
+    color: var(--text-color) !important;
 }
 header[data-testid="stHeader"] [data-testid="stToolbar"] button:hover {
-    color: var(--primary-color, #458588) !important;
-    background: rgba(69, 133, 136, 0.12) !important;
+    color: var(--primary-color) !important;
+    background: color-mix(in srgb, var(--primary-color) 12%, transparent) !important;
 }
 footer { visibility: hidden; }
 """
 
 SESSION_BAR_CSS = f"""
 [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) {{
-    background: var(--secondary-background-color, {LOGIN_INPUT_BG}) !important;
+    background: var(--secondary-background-color) !important;
     border: 1px solid rgba(128, 128, 128, 0.22) !important;
     border-radius: 12px !important;
     margin-bottom: 1rem !important;
     padding: 0.55rem 0.85rem !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+    box-shadow: 0 1px 0 rgba(128, 128, 128, 0.08) inset;
 }}
 [data-testid="stVerticalBlockBorderWrapper"]:has(.kahoot-session-shell) > div > [data-testid="stVerticalBlock"] {{
     gap: 0 !important;
@@ -642,7 +642,7 @@ SESSION_BAR_CSS = f"""
     gap: 0.5rem;
 }}
 .kahoot-session-name {{
-    color: var(--text-color, #e8edf2);
+    color: var(--text-color) !important;
     font-size: 0.95rem;
     font-weight: 700;
     line-height: 1.2;
@@ -664,9 +664,9 @@ SESSION_BAR_CSS = f"""
     font-weight: 700;
     letter-spacing: 0.06em;
     text-transform: uppercase;
-    background: rgba(69, 133, 136, 0.18);
-    color: var(--primary-color, #458588);
-    border: 1px solid rgba(69, 133, 136, 0.45);
+    background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    color: var(--primary-color) !important;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 45%, transparent);
 }}
 .kahoot-session-role--student {{
     background: rgba(99, 132, 168, 0.16);
@@ -749,6 +749,25 @@ def _session_profile_html(name: str, role_label: str, role_badge_class: str, ema
         f"{email_html}"
         f"</div>"
         f"</div>"
+    )
+
+
+def _clear_login_page_styles():
+    """Remove CSS da login injetado no documento pai (impede tema claro após autenticar)."""
+    components.html(
+        """
+        <script>
+        (function () {
+            const doc = window.parent.document;
+            const style = doc.getElementById("kahoot-login-style");
+            if (style) style.remove();
+            doc.querySelectorAll(".kahoot-login-row").forEach((row) => {
+                row.classList.remove("kahoot-login-row");
+            });
+        })();
+        </script>
+        """,
+        height=0,
     )
 
 
@@ -984,6 +1003,7 @@ def render_session_controls():
     )
 
     st.markdown(f"<style>{APP_HEADER_CSS}{SESSION_BAR_CSS}</style>", unsafe_allow_html=True)
+    _clear_login_page_styles()
 
     if email:
         email_html = f'<div class="kahoot-session-email">{email}</div>'

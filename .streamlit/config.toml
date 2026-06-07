@@ -1,5 +1,4 @@
 [theme]
-base = "dark"
 primaryColor = "#458588"
 
 [theme.light]
