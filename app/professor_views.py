@@ -37,7 +37,12 @@ from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
 from app.charts import plot_leaderboard_comparison, plot_question_performance
 from app.components import render_classification_badge
 from app.constants import EMPTY_QUESTION, EXAM_FORMAT_HELP
-from app.pdf_helpers import parse_exam_from_upload, parse_questions_from_upload, validate_questions
+from app.pdf_helpers import (
+    UPLOAD_FILE_TYPES,
+    parse_exam_from_upload,
+    parse_questions_from_upload,
+    validate_questions,
+)
 
 
 def render_question_editor(questions: list, key_prefix: str) -> list:
@@ -158,7 +163,7 @@ def render_exams_tab():
     new_title = st.text_input("Título da prova", placeholder="Ex.: Prova 1 — Lógica", key="exam_title")
     uploaded = st.file_uploader(
         "Arquivo da prova (PDF ou Markdown, com gabarito)",
-        type=["pdf", "md"],
+        type=UPLOAD_FILE_TYPES,
         key="exam_pdf",
     )
 
@@ -329,8 +334,8 @@ def render_professor_panel():
         st.subheader("Gerenciar materiais")
         new_title = st.text_input("Título do novo material", placeholder="Ex.: Lógica - Aula 3")
         uploaded = st.file_uploader(
-            "Importar perguntas (PDF ou Markdown)",
-            type=["pdf", "md"],
+            "Importar perguntas (PDF, .md ou .markdown)",
+            type=UPLOAD_FILE_TYPES,
             key="prof_pdf",
         )
 
@@ -410,7 +415,7 @@ def render_professor_panel():
 
             pdf_update = st.file_uploader(
                 "Substituir todas as perguntas via PDF ou Markdown",
-                type=["pdf", "md"],
+                type=UPLOAD_FILE_TYPES,
                 key="prof_pdf_replace",
             )
             if pdf_update and st.button("Importar arquivo neste material"):

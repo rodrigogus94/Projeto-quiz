@@ -6,6 +6,7 @@ import streamlit as st
 from pdf_parser import parse_exam_from_text, parse_questions_from_text
 
 SUPPORTED_UPLOAD_EXTENSIONS = (".pdf", ".md", ".markdown", ".txt")
+UPLOAD_FILE_TYPES = ["pdf", "md", "markdown", "txt"]
 
 
 def extract_text_from_pdf(pdf_file) -> str:
