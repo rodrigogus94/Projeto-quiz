@@ -5,6 +5,8 @@ import streamlit as st
 
 from pdf_parser import parse_exam_from_text, parse_questions_from_text
 
+SUPPORTED_UPLOAD_EXTENSIONS = (".pdf", ".md", ".markdown", ".txt")
+
 
 def extract_text_from_pdf(pdf_file) -> str:
     with pdfplumber.open(pdf_file) as pdf:
@@ -16,8 +18,35 @@ def extract_text_from_pdf(pdf_file) -> str:
         return "\n".join(parts)
 
 
-def parse_questions_from_pdf(pdf_file, show_warnings: bool = True) -> list:
-    full_text = extract_text_from_pdf(pdf_file)
+def _normalize_markdown_source(text: str) -> str:
+    """Remove cercas de bloco de código comuns em arquivos .md."""
+    lines = text.splitlines()
+    if lines and lines[0].strip().startswith("```"):
+        lines = lines[1:]
+    while lines and lines[-1].strip().startswith("```"):
+        lines = lines[:-1]
+    return "\n".join(lines)
+
+
+def read_text_from_upload(uploaded_file) -> str:
+    name = (getattr(uploaded_file, "name", None) or "").lower()
+    uploaded_file.seek(0)
+    if name.endswith(".pdf"):
+        return extract_text_from_pdf(uploaded_file)
+    if name.endswith((".md", ".markdown", ".txt")):
+        raw = uploaded_file.read()
+        text = raw.decode("utf-8-sig") if isinstance(raw, bytes) else raw
+        if name.endswith((".md", ".markdown")):
+            text = _normalize_markdown_source(text)
+        return text
+    raise ValueError(
+        f"Formato não suportado ({name or 'sem extensão'}). "
+        f"Use: {', '.join(SUPPORTED_UPLOAD_EXTENSIONS)}."
+    )
+
+
+def parse_questions_from_upload(uploaded_file, show_warnings: bool = True) -> list:
+    full_text = read_text_from_upload(uploaded_file)
     warnings = []
     questions = parse_questions_from_text(full_text, warnings=warnings)
     if show_warnings:
@@ -26,14 +55,22 @@ def parse_questions_from_pdf(pdf_file, show_warnings: bool = True) -> list:
     return questions
 
 
-def parse_exam_from_pdf(pdf_file, show_warnings: bool = True) -> list:
-    full_text = extract_text_from_pdf(pdf_file)
+def parse_exam_from_upload(uploaded_file, show_warnings: bool = True) -> list:
+    full_text = read_text_from_upload(uploaded_file)
     warnings = []
     questions = parse_exam_from_text(full_text, warnings=warnings)
     if show_warnings:
         for msg in warnings:
             st.warning(msg)
     return questions
+
+
+def parse_questions_from_pdf(pdf_file, show_warnings: bool = True) -> list:
+    return parse_questions_from_upload(pdf_file, show_warnings=show_warnings)
+
+
+def parse_exam_from_pdf(pdf_file, show_warnings: bool = True) -> list:
+    return parse_exam_from_upload(pdf_file, show_warnings=show_warnings)
 
 
 def validate_questions(questions: list) -> tuple[list, list]:

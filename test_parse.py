@@ -1,5 +1,12 @@
+import io
 import unittest
 
+from app.pdf_helpers import (
+    _normalize_markdown_source,
+    parse_exam_from_upload,
+    parse_questions_from_upload,
+    read_text_from_upload,
+)
 from pdf_parser import exam_summary, parse_exam_from_text, parse_questions_from_text
 
 SAMPLE_TEXT = """
@@ -70,6 +77,32 @@ class TestParseExam(unittest.TestCase):
         q = parse_exam_from_text(EXAM_TEXT)[2]
         self.assertEqual(q["type"], "justify")
         self.assertIn("Armazenar dados", q["answer_key"])
+
+
+class TestMarkdownUpload(unittest.TestCase):
+    def test_normalize_strips_code_fence(self):
+        wrapped = "```\nPergunta 1: Teste?\n```"
+        self.assertEqual(_normalize_markdown_source(wrapped), "Pergunta 1: Teste?")
+
+    def test_parse_questions_from_md_upload(self):
+        content = SAMPLE_TEXT.strip().encode("utf-8")
+        uploaded = io.BytesIO(content)
+        uploaded.name = "quiz.md"
+        questions = parse_questions_from_upload(uploaded, show_warnings=False)
+        self.assertEqual(len(questions), 2)
+
+    def test_parse_exam_from_md_upload(self):
+        content = EXAM_TEXT.strip().encode("utf-8")
+        uploaded = io.BytesIO(content)
+        uploaded.name = "prova.md"
+        questions = parse_exam_from_upload(uploaded, show_warnings=False)
+        self.assertEqual(len(questions), 3)
+
+    def test_read_md_with_bom(self):
+        content = "\ufeffPergunta 1: ok".encode("utf-8-sig")
+        uploaded = io.BytesIO(content)
+        uploaded.name = "notas.md"
+        self.assertIn("Pergunta 1", read_text_from_upload(uploaded))
 
 
 if __name__ == "__main__":

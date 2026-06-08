@@ -7,7 +7,7 @@ EMPTY_QUESTION = {
 }
 
 EXAM_FORMAT_HELP = """
-**Formato do PDF da prova (com gabarito — só o professor vê):**
+**Formato do arquivo da prova (PDF ou Markdown, com gabarito — só o professor vê):**
 
 **Múltipla escolha:**
 ```

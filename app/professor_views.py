@@ -37,7 +37,7 @@ from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
 from app.charts import plot_leaderboard_comparison, plot_question_performance
 from app.components import render_classification_badge
 from app.constants import EMPTY_QUESTION, EXAM_FORMAT_HELP
-from app.pdf_helpers import parse_exam_from_pdf, parse_questions_from_pdf, validate_questions
+from app.pdf_helpers import parse_exam_from_upload, parse_questions_from_upload, validate_questions
 
 
 def render_question_editor(questions: list, key_prefix: str) -> list:
@@ -147,19 +147,23 @@ def render_exam_question_preview(questions: list, show_gabarito: bool = True):
 
 
 def render_exams_tab():
-    st.subheader("Provas (PDF com gabarito)")
+    st.subheader("Provas (PDF ou Markdown com gabarito)")
     st.caption("O gabarito fica só com o professor. Os alunos veem apenas as questões.")
-    with st.expander("📋 Formato esperado do PDF"):
+    with st.expander("📋 Formato esperado do arquivo"):
         st.markdown(EXAM_FORMAT_HELP)
 
     exams = list_exams()
     active_ids = set(get_active_exam_ids())
 
     new_title = st.text_input("Título da prova", placeholder="Ex.: Prova 1 — Lógica", key="exam_title")
-    uploaded = st.file_uploader("PDF da prova (com gabarito)", type="pdf", key="exam_pdf")
+    uploaded = st.file_uploader(
+        "Arquivo da prova (PDF ou Markdown, com gabarito)",
+        type=["pdf", "md"],
+        key="exam_pdf",
+    )
 
-    if st.button("📄 Importar prova do PDF", type="primary") and uploaded and new_title.strip():
-        questions = parse_exam_from_pdf(uploaded)
+    if st.button("📄 Importar prova", type="primary") and uploaded and new_title.strip():
+        questions = parse_exam_from_upload(uploaded)
         if questions:
             create_exam(new_title.strip(), questions)
             summary = exam_summary(questions)
@@ -169,10 +173,10 @@ def render_exams_tab():
             )
             st.rerun()
         else:
-            st.error("Nenhuma questão identificada. Verifique o formato do PDF.")
+            st.error("Nenhuma questão identificada. Verifique o formato do arquivo.")
 
     if not exams:
-        st.info("Nenhuma prova cadastrada. Importe um PDF acima.")
+        st.info("Nenhuma prova cadastrada. Importe um PDF ou Markdown acima.")
         return
 
     st.markdown("---")
@@ -324,7 +328,11 @@ def render_professor_panel():
         st.caption("Vários materiais podem ficar ativos ao mesmo tempo para os alunos.")
         st.subheader("Gerenciar materiais")
         new_title = st.text_input("Título do novo material", placeholder="Ex.: Lógica - Aula 3")
-        uploaded = st.file_uploader("Importar perguntas de PDF", type="pdf", key="prof_pdf")
+        uploaded = st.file_uploader(
+            "Importar perguntas (PDF ou Markdown)",
+            type=["pdf", "md"],
+            key="prof_pdf",
+        )
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -333,14 +341,14 @@ def render_professor_panel():
                 st.success("Material criado.")
                 st.rerun()
         with col_b:
-            if st.button("📄 Criar a partir do PDF") and uploaded and new_title.strip():
-                questions = parse_questions_from_pdf(uploaded)
+            if st.button("📄 Criar a partir do arquivo") and uploaded and new_title.strip():
+                questions = parse_questions_from_upload(uploaded)
                 if questions:
                     create_material(new_title.strip(), questions)
                     st.success(f"Material criado com {len(questions)} perguntas.")
                     st.rerun()
                 else:
-                    st.error("Não foi possível extrair perguntas do PDF.")
+                    st.error("Não foi possível extrair perguntas do arquivo.")
 
         if not materials:
             st.info("Nenhum material cadastrado. Crie um material acima.")
@@ -401,12 +409,12 @@ def render_professor_panel():
                 st.rerun()
 
             pdf_update = st.file_uploader(
-                "Substituir todas as perguntas via PDF",
-                type="pdf",
+                "Substituir todas as perguntas via PDF ou Markdown",
+                type=["pdf", "md"],
                 key="prof_pdf_replace",
             )
-            if pdf_update and st.button("Importar PDF neste material"):
-                parsed = parse_questions_from_pdf(pdf_update)
+            if pdf_update and st.button("Importar arquivo neste material"):
+                parsed = parse_questions_from_upload(pdf_update)
                 if parsed:
                     update_material(material_id, title, parsed)
                     st.success(f"{len(parsed)} perguntas importadas.")
