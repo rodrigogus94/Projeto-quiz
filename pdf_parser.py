@@ -4,6 +4,9 @@ from __future__ import annotations
 import re
 
 PERGUNTA_HEADER = re.compile(r"Pergunta\s+(\d+):\s*", re.IGNORECASE)
+QUESTAO_HEADER_MD = re.compile(r"^#{0,3}\s*Questão\s+(\d+)\s*$", re.MULTILINE | re.IGNORECASE)
+OPTION_LINE_MD = re.compile(r"^([A-D])\)\s*(.+?)\s*$", re.MULTILINE)
+RESPOSTA_CORRETA_MD = re.compile(r"Resposta\s+Correta\s*:\s*([A-D])", re.IGNORECASE)
 ALT_START = re.compile(r"Alternativa\s+[A-D]\s*[\(:]", re.IGNORECASE)
 ALT_PATTERN = re.compile(
     r"Alternativa\s+([A-D])\s*(?:\([^)]*\))?\s*:?\s*(.*?)(?=Alternativa\s+[A-D]|Gabarito\s*:|Resposta\s+esperada\s*:|Pergunta\s+\d+:|$)",
@@ -34,6 +37,96 @@ def _strip_display_markers(text: str) -> str:
     text = JUSTIFY_MARKER.sub("", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _strip_markdown_inline(text: str) -> str:
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"__(.+?)__", r"\1", text)
+    text = re.sub(r"`(.+?)`", r"\1", text)
+    return text.strip()
+
+
+def _parse_markdown_choice_block(block: str) -> dict | None:
+    correct_match = RESPOSTA_CORRETA_MD.search(block)
+    if not correct_match:
+        return None
+
+    correct = correct_match.group(1).upper()
+    option_matches = list(OPTION_LINE_MD.finditer(block))
+    if len(option_matches) < 4:
+        return None
+
+    first_opt = option_matches[0]
+    question_raw = block[: first_opt.start()].strip()
+    question_text = _clean_text(_strip_markdown_inline(question_raw))
+    if not question_text:
+        return None
+
+    options = [
+        _clean_text(_strip_markdown_inline(m.group(2)))
+        for m in option_matches[:4]
+    ]
+    if len(options) != 4 or any(not o for o in options) or correct not in "ABCD":
+        return None
+
+    return {
+        "question": question_text,
+        "options": options,
+        "correct": correct,
+    }
+
+
+def _parse_markdown_quiz_questions(full_text: str, warnings: list | None = None) -> list:
+    matches = list(QUESTAO_HEADER_MD.finditer(full_text))
+    if not matches:
+        return []
+
+    questions = []
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.end() : block_end]
+
+        parsed = _parse_markdown_choice_block(block)
+        if parsed:
+            questions.append(parsed)
+        else:
+            _warn(
+                warnings,
+                f"Questão {num} ignorada: enunciado, 4 opções (A-D) ou Resposta Correta incompletos.",
+            )
+
+    return questions
+
+
+def _parse_markdown_exam_questions(full_text: str, warnings: list | None = None) -> list:
+    matches = list(QUESTAO_HEADER_MD.finditer(full_text))
+    if not matches:
+        return []
+
+    questions = []
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.end() : block_end]
+
+        parsed = _parse_markdown_choice_block(block)
+        if parsed:
+            questions.append(
+                {
+                    "type": "choice",
+                    "question": parsed["question"],
+                    "options": parsed["options"],
+                    "correct": parsed["correct"],
+                }
+            )
+        else:
+            _warn(
+                warnings,
+                f"Questão {num} ignorada: enunciado, 4 opções (A-D) ou Resposta Correta incompletos.",
+            )
+
+    return questions
 
 
 def _extract_gabarito(block: str) -> str:
@@ -111,6 +204,9 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
     Tipos: choice (múltipla escolha) e justify (dissertativa/justificativa).
     """
     matches = list(PERGUNTA_HEADER.finditer(full_text))
+    if not matches:
+        return _parse_markdown_exam_questions(full_text, warnings)
+
     questions = []
 
     for i, match in enumerate(matches):
@@ -140,8 +236,11 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
 
 
 def parse_questions_from_text(full_text: str, warnings: list | None = None) -> list:
-    """Parser legado do quiz — apenas múltipla escolha."""
+    """Parser de quiz — múltipla escolha (formato PDF ou Markdown)."""
     matches = list(PERGUNTA_HEADER.finditer(full_text))
+    if not matches:
+        return _parse_markdown_quiz_questions(full_text, warnings)
+
     questions = []
 
     for i, match in enumerate(matches):

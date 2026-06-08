@@ -23,6 +23,27 @@ Alternativa C (Amarelo): for (CORRETA)
 Alternativa D (Verde): input
 """
 
+MARKDOWN_QUIZ_TEXT = """
+### Questão 1
+Qual estrutura de repetição é mais indicada quando você **já sabe** exatamente quantas vezes o código deve ser executado?
+A) if / else
+B) while
+C) for
+D) switch
+
+**Resposta Correta: C**
+**Justificativa:** O loop `for` é projetado especificamente para iterações contáveis.
+
+### Questão 2
+O que acontece se a condição de um loop `while` nunca se tornar falsa?
+A) O código pula para a próxima linha fora do loop.
+B) Ocorre um "Loop Infinito", podendo travar o navegador ou o computador.
+C) O JavaScript corrige o erro automaticamente após 100 voltas.
+D) O loop é executado apenas uma vez por segurança.
+
+**Resposta Correta: B**
+"""
+
 EXAM_TEXT = """
 Pergunta 1: Qual é o valor de 2+2?
 Alternativa A: 3
@@ -77,6 +98,24 @@ class TestParseExam(unittest.TestCase):
         q = parse_exam_from_text(EXAM_TEXT)[2]
         self.assertEqual(q["type"], "justify")
         self.assertIn("Armazenar dados", q["answer_key"])
+
+
+class TestParseMarkdownQuiz(unittest.TestCase):
+    def test_extracts_markdown_questions(self):
+        questions = parse_questions_from_text(MARKDOWN_QUIZ_TEXT)
+        self.assertEqual(len(questions), 2)
+
+    def test_markdown_strips_bold_and_finds_correct(self):
+        q1 = parse_questions_from_text(MARKDOWN_QUIZ_TEXT)[0]
+        self.assertIn("já sabe", q1["question"])
+        self.assertNotIn("**", q1["question"])
+        self.assertEqual(q1["correct"], "C")
+        self.assertEqual(len(q1["options"]), 4)
+
+    def test_markdown_exam_import(self):
+        questions = parse_exam_from_text(MARKDOWN_QUIZ_TEXT)
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(questions[0]["type"], "choice")
 
 
 class TestMarkdownUpload(unittest.TestCase):

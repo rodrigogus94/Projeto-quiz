@@ -24,4 +24,16 @@ Pergunta 2: Explique o conceito X. (JUSTIFICATIVA)
 Gabarito: texto esperado na correção
 ```
 ou use `Resposta esperada:` / `Tipo: Justificativa` / enunciado com "Justifique".
+
+**Markdown (`.md` / `.markdown`):**
+```
+### Questão 1
+Enunciado da questão?
+A) alternativa A
+B) alternativa B
+C) alternativa C
+D) alternativa D
+
+**Resposta Correta: C**
+```
 """
