@@ -1,6 +1,7 @@
 """Cadastro unificado de usuários com papel (role): professor | student."""
 from __future__ import annotations
 
+import csv
 import json
 import uuid
 from datetime import datetime, timezone
@@ -8,10 +9,12 @@ from pathlib import Path
 
 DATA_DIR = Path(__file__).parent / "data"
 USERS_PATH = DATA_DIR / "users.json"
+BACKUP_APPROVED_PATH = DATA_DIR / "backup_aprovados.csv"
 ROLES = ("professor", "student")
 ACCOUNT_STATUSES = ("pending", "approved", "rejected")
 PROFESSOR_STATUSES = ACCOUNT_STATUSES
 DEFAULT_ADMIN_EMAIL = "rodrigogus94@gmail.com"
+ROLE_LABELS = {"professor": "Professor", "student": "Aluno"}
 
 
 def _ensure_data_dir():
@@ -40,8 +43,40 @@ def load_users() -> list:
     return data if isinstance(data, list) else []
 
 
+def _write_approved_backup(users: list) -> None:
+    """Backup local (CSV) dos usuários já cadastrados e aprovados.
+
+    Regenerado a cada alteração no cadastro; serve como cópia de segurança
+    com nome, e-mail e categoria, legível em Excel/planilhas.
+    """
+    try:
+        _ensure_data_dir()
+        approved = [
+            u
+            for u in users
+            if u.get("active", True) and u.get("status", "approved") == "approved"
+        ]
+        with BACKUP_APPROVED_PATH.open("w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f, delimiter=";")
+            writer.writerow(["nome", "email", "categoria", "cadastrado_em", "atualizado_em"])
+            for u in sorted(approved, key=lambda x: (x.get("role", ""), (x.get("name") or "").lower())):
+                writer.writerow(
+                    [
+                        u.get("name") or "",
+                        u.get("email") or "",
+                        ROLE_LABELS.get(u.get("role"), u.get("role") or ""),
+                        u.get("created_at") or "",
+                        u.get("updated_at") or "",
+                    ]
+                )
+    except OSError:
+        # O backup nunca deve quebrar o fluxo principal de cadastro.
+        pass
+
+
 def save_users(users: list) -> None:
     _save_json(USERS_PATH, users)
+    _write_approved_backup(users)
 
 
 def _normalize_email(email: str | None) -> str:

@@ -25,7 +25,7 @@ THEME_COLORS = {
         "primary": "#458588",
         "background": "#FFFFFF",
         "secondary": "#F0F2F6",
-        "text": "#31333F",
+        "text": "#000000",
     },
     "dark": {
         "primary": "#458588",
@@ -37,8 +37,8 @@ THEME_COLORS = {
 
 THEME_TOKENS = {
     "light": {
-        "text_muted": "#5c6370",
-        "text_subtle": "#6b7280",
+        "text_muted": "#1c1e24",
+        "text_subtle": "#2a2d33",
         "border": "rgba(49, 51, 63, 0.22)",
         "border_strong": "rgba(49, 51, 63, 0.38)",
         "student_role_text": "#3d5a72",
@@ -106,7 +106,7 @@ ALERT_TOKENS = {
 CHART_PALETTES = {
     "light": {
         "figure": "#FFFFFF",
-        "text": "#31333F",
+        "text": "#000000",
         "grid": "rgba(49, 51, 63, 0.2)",
         "correct": "#27ae60",
         "wrong": "#c75555",
@@ -132,14 +132,14 @@ CLASSIFICATION_BADGE_COLORS = {
 LOGIN_THEME_TOKENS = {
     "light": {
         "panel_right": "#FFFFFF",
-        "form_title": "#31333F",
-        "form_sub": "#5c6370",
-        "form_muted": "#6b7280",
+        "form_title": "#000000",
+        "form_sub": "#1c1e24",
+        "form_muted": "#2a2d33",
         "or_line": "rgba(49, 51, 63, 0.3)",
-        "label": "#5c6370",
+        "label": "#1c1e24",
         "input_bg": "#FFFFFF",
         "input_border": "rgba(49, 51, 63, 0.35)",
-        "input_text": "#31333F",
+        "input_text": "#000000",
         "google_border": "rgba(49, 51, 63, 0.3)",
         "google_bg": "#FFFFFF",
         "secondary_btn_bg": "#F0F2F6",

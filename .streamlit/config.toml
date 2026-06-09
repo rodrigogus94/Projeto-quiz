@@ -6,7 +6,7 @@ base = "light"
 primaryColor = "#458588"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F0F2F6"
-textColor = "#31333F"
+textColor = "#000000"
 
 [theme.dark]
 primaryColor = "#458588"
