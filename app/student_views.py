@@ -37,8 +37,8 @@ from app.session import (
     finish_quiz,
     get_playable_active_materials,
     load_student_material,
-    name_exists_in_leaderboard,
     on_quiz_material_changed,
+    quiz_attempt_permission,
     reset_quiz,
     sync_playable_exam,
     sync_playable_material,
@@ -159,15 +159,30 @@ def render_student_quiz_tab():
             names = sorted(s["name"] for s in registered)
             selected_name = _render_student_identity(names, "student_name_select")
             st.divider()
+
+            can_play, attempt_msg = (
+                quiz_attempt_permission(selected_name, picked_id)
+                if selected_name and mat
+                else (True, "")
+            )
+            if attempt_msg:
+                if can_play:
+                    st.info(attempt_msg)
+                else:
+                    st.warning(attempt_msg)
+
             if (
-                st.button("🆕 Iniciar quiz", use_container_width=True, type="primary")
+                st.button(
+                    "🆕 Iniciar quiz",
+                    use_container_width=True,
+                    type="primary",
+                    disabled=bool(selected_name) and not can_play,
+                )
                 and selected_name
                 and mat
+                and can_play
             ):
                 load_student_material(picked_id)
-                mid = st.session_state.current_material_id
-                if name_exists_in_leaderboard(selected_name, mid):
-                    st.warning("Um novo resultado será adicionado ao refazer.")
                 st.session_state.current_student_name = selected_name
                 st.session_state.preferred_student_name = selected_name
                 reset_quiz()
@@ -373,10 +388,23 @@ def _render_quiz_results():
         else:
             st.warning("Não desanime — refaça o quiz para fixar o conteúdo.")
 
-    if st.button("📝 Fazer quiz novamente", type="primary"):
-        st.session_state.quiz_finished = False
-        st.session_state.quiz_active = False
-        st.rerun()
+    can_retry, retry_msg = quiz_attempt_permission(
+        st.session_state.current_student_name,
+        st.session_state.current_material_id or "",
+    )
+    if can_retry:
+        if retry_msg:
+            st.info(retry_msg)
+        if st.button("📝 Fazer quiz novamente", type="primary"):
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_active = False
+            st.rerun()
+    else:
+        st.info(retry_msg)
+        if st.button("🏠 Voltar ao início", type="secondary"):
+            st.session_state.quiz_finished = False
+            st.session_state.quiz_active = False
+            st.rerun()
 
 
 def _render_exam_flow():
