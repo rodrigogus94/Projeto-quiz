@@ -107,7 +107,8 @@ CHART_PALETTES = {
     "light": {
         "figure": "#FFFFFF",
         "text": "#000000",
-        "grid": "rgba(49, 51, 63, 0.2)",
+        # Hex de 8 dígitos (RRGGBBAA): matplotlib não aceita strings CSS rgba().
+        "grid": "#31333F33",
         "correct": "#27ae60",
         "wrong": "#c75555",
         "bar": "#458588",
@@ -116,7 +117,7 @@ CHART_PALETTES = {
     "dark": {
         "figure": "#1d2021",
         "text": "#e8edf2",
-        "grid": "rgba(232, 237, 242, 0.2)",
+        "grid": "#E8EDF233",
         "correct": "#58d68d",
         "wrong": "#f08080",
         "bar": "#5ba8a0",
