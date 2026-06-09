@@ -3,6 +3,7 @@ from __future__ import annotations
 import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
+from matplotlib.ticker import MaxNLocator
 
 from ui_theme import chart_palette, style_matplotlib_figure
 
@@ -49,6 +50,81 @@ def plot_leaderboard_comparison(leaderboard):
     style_matplotlib_figure(fig, ax)
     for i, v in enumerate(df["porcentagem"]):
         ax.text(v + 1, i, f"{v:.1f}%", va="center", color=pal["text"])
+    _show_figure(fig)
+
+
+def plot_score_distribution(best_scores: list[int], total_questions: int):
+    """Quantos alunos ficaram em cada nota (melhor tentativa de cada um)."""
+    if not best_scores or total_questions <= 0:
+        return
+    pal = chart_palette()
+    counts = [best_scores.count(s) for s in range(total_questions + 1)]
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar(range(total_questions + 1), counts, color=pal["bar"])
+    ax.set_xticks(range(total_questions + 1))
+    ax.set_xlabel("Acertos (melhor tentativa)")
+    ax.set_ylabel("Nº de alunos")
+    ax.set_title("Distribuição de notas")
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    style_matplotlib_figure(fig, ax)
+    for i, c in enumerate(counts):
+        if c:
+            ax.text(i, c + 0.05, str(c), ha="center", color=pal["text"])
+    _show_figure(fig)
+
+
+def plot_completion_donut(completed: int, pending: int, target: int):
+    """Proporção de alunos que concluíram (atingiram a meta) vs abaixo dela."""
+    if completed + pending <= 0:
+        return
+    pal = chart_palette()
+    fig, ax = plt.subplots(figsize=(5, 4))
+    ax.pie(
+        [completed, pending],
+        labels=[f"{target}+ acertos", f"Abaixo de {target}"],
+        autopct=lambda p: f"{p:.0f}%" if p > 0 else "",
+        colors=[pal["correct"], pal["wrong"]],
+        startangle=90,
+        wedgeprops={"width": 0.45},
+        textprops={"color": pal["text"]},
+    )
+    ax.axis("equal")
+    ax.set_title("Aproveitamento da turma")
+    style_matplotlib_figure(fig, ax, grid=False)
+    _show_figure(fig)
+
+
+def plot_attempts_comparison(leaderboard):
+    """Evolução dos alunos que usaram a segunda tentativa (1ª vs 2ª)."""
+    first: dict[str, int] = {}
+    second: dict[str, int] = {}
+    for e in leaderboard:
+        n = e["name"]
+        if n not in first:
+            first[n] = e["score"]
+        elif n not in second:
+            second[n] = e["score"]
+    names = list(second)
+    if not names:
+        st.info("Nenhum aluno fez a segunda tentativa ainda.")
+        return
+    pal = chart_palette()
+    x = range(len(names))
+    w = 0.38
+    fig, ax = plt.subplots(figsize=(8, 4))
+    ax.bar([i - w / 2 for i in x], [first[n] for n in names], width=w, label="1ª tentativa", color=pal["performance"])
+    ax.bar([i + w / 2 for i in x], [second[n] for n in names], width=w, label="2ª tentativa", color=pal["bar"])
+    ax.set_xticks(list(x))
+    ax.set_xticklabels(names, rotation=20, ha="right")
+    ax.set_ylabel("Acertos")
+    ax.set_title("Evolução: 1ª vs 2ª tentativa")
+    ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    style_matplotlib_figure(fig, ax)
+    legend = ax.legend()
+    legend.get_frame().set_facecolor(pal["figure"])
+    legend.get_frame().set_edgecolor(pal["grid"])
+    for text in legend.get_texts():
+        text.set_color(pal["text"])
     _show_figure(fig)
 
 

@@ -34,7 +34,14 @@ from quiz_storage import (
 )
 
 from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
-from app.charts import plot_leaderboard_comparison, plot_question_performance
+from app.charts import (
+    plot_attempts_comparison,
+    plot_completion_donut,
+    plot_leaderboard_comparison,
+    plot_question_performance,
+    plot_score_distribution,
+)
+from app.session import QUIZ_SECOND_CHANCE_MIN_SCORE
 from app.components import render_classification_badge
 from app.constants import EMPTY_QUESTION, EXAM_FORMAT_HELP
 from app.pdf_helpers import (
@@ -317,6 +324,136 @@ def render_exams_tab():
             )
 
 
+def render_results_tab(materials: list):
+    st.subheader("Resultados dos quizzes")
+    if not materials:
+        st.info("Sem materiais para analisar.")
+        return
+
+    mat_options = {m["title"]: m["id"] for m in materials}
+    res_title = st.selectbox("Material", list(mat_options.keys()), key="res_mat")
+    res_id = mat_options[res_title]
+    material = get_material(res_id)
+    entries = leaderboard_for_material(res_id)
+    total_q = len(material["questions"]) if material else 0
+
+    if not entries:
+        st.info("Nenhum aluno finalizou este quiz ainda.")
+        return
+
+    df = pd.DataFrame(entries)
+    df["pct"] = df.apply(
+        lambda r: (r["score"] / r["total"] * 100) if r["total"] else 0.0, axis=1
+    )
+    df["Tentativa"] = df.groupby("name").cumcount() + 1
+
+    # Melhor tentativa de cada aluno
+    best = df.loc[df.groupby("name")["score"].idxmax()].copy()
+    attempts_by_name = df.groupby("name").size()
+    target = min(QUIZ_SECOND_CHANCE_MIN_SCORE, total_q) if total_q else QUIZ_SECOND_CHANCE_MIN_SCORE
+
+    responders = len(best)
+    completed = int((best["score"] >= target).sum())
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Alunos que responderam", responders)
+    m2.metric("Tentativas registradas", len(df))
+    m3.metric("Média de acertos", f"{df['pct'].mean():.0f}%")
+    m4.metric(f"Concluíram ({target}+ acertos)", f"{completed}/{responders}")
+
+    tab_rank, tab_q, tab_dist, tab_aprov, tab_tent = st.tabs(
+        [
+            "🏆 Ranking",
+            "🎯 Por pergunta",
+            "📊 Distribuição",
+            "✅ Aproveitamento",
+            "🔁 1ª vs 2ª tentativa",
+        ]
+    )
+    with tab_rank:
+        st.caption("Melhor resultado de cada aluno.")
+        plot_leaderboard_comparison(best.to_dict("records"))
+    with tab_q:
+        st.caption("Percentual de tentativas que acertaram cada pergunta.")
+        if total_q:
+            plot_question_performance(entries, total_q)
+        else:
+            st.info("Material sem perguntas cadastradas.")
+    with tab_dist:
+        st.caption("Quantos alunos ficaram em cada nota (melhor tentativa).")
+        plot_score_distribution(
+            [int(s) for s in best["score"]],
+            total_q or int(df["total"].max()),
+        )
+    with tab_aprov:
+        st.caption(f"Alunos que atingiram {target}+ acertos vs abaixo da meta.")
+        plot_completion_donut(completed, responders - completed, target)
+    with tab_tent:
+        st.caption("Alunos que usaram a segunda oportunidade.")
+        plot_attempts_comparison(entries)
+
+    st.markdown("#### 👥 Todos os alunos que responderam")
+
+    def _status(row) -> str:
+        if row["score"] >= target:
+            return "✅ Concluído"
+        if attempts_by_name.get(row["name"], 0) >= 2:
+            return "⛔ Tentativas esgotadas"
+        return "🔁 Pode refazer"
+
+    summary = pd.DataFrame(
+        {
+            "Aluno": best["name"],
+            "Tentativas": best["name"].map(attempts_by_name).astype(int),
+            "Melhor nota": best.apply(
+                lambda r: f"{int(r['score'])}/{int(r['total'])}", axis=1
+            ),
+            "% Acertos": best["pct"].round(1),
+            "Situação": best.apply(_status, axis=1),
+        }
+    ).sort_values("% Acertos", ascending=False)
+    st.dataframe(summary, use_container_width=True, hide_index=True)
+
+    with st.expander(f"📄 Todas as tentativas ({len(df)})"):
+        detail = df[["name", "Tentativa", "score", "total", "pct"]].rename(
+            columns={
+                "name": "Aluno",
+                "score": "Acertos",
+                "total": "Total",
+                "pct": "% Acertos",
+            }
+        )
+        detail["% Acertos"] = detail["% Acertos"].round(1)
+        st.dataframe(
+            detail.sort_values(["Aluno", "Tentativa"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    responder_keys = {n.strip().lower() for n in best["name"]}
+    pending_names = [
+        s["name"]
+        for s in load_students()
+        if s["name"].strip().lower() not in responder_keys
+    ]
+    with st.expander(f"💤 Ainda não responderam ({len(pending_names)})"):
+        if pending_names:
+            st.write(", ".join(sorted(pending_names)))
+        else:
+            st.write("Todos os alunos cadastrados já responderam este quiz. 🎉")
+
+    st.divider()
+    if st.button("🗑️ Limpar resultados deste material"):
+        st.session_state.leaderboard = [
+            e
+            for e in st.session_state.leaderboard
+            if e.get("material_id") != res_id
+        ]
+        save_leaderboard(st.session_state.leaderboard)
+        st.success("Resultados removidos.")
+        st.rerun()
+
+
 def render_professor_panel():
     st.title("👨‍🏫 Painel do Professor")
 
@@ -456,37 +593,7 @@ def render_professor_panel():
         render_students_tab()
 
     elif section == "results":
-        if not materials:
-            st.info("Sem materiais para analisar.")
-        else:
-            mat_options = {m["title"]: m["id"] for m in materials}
-            res_title = st.selectbox("Material", list(mat_options.keys()), key="res_mat")
-            res_id = mat_options[res_title]
-            material = get_material(res_id)
-            entries = leaderboard_for_material(res_id)
-
-            if not entries:
-                st.info("Nenhum aluno finalizou este quiz ainda.")
-            else:
-                plot_leaderboard_comparison(entries)
-                if material:
-                    plot_question_performance(entries, len(material["questions"]))
-                df_rank = pd.DataFrame(entries)
-                df_rank["% Acertos"] = (df_rank["score"] / df_rank["total"]) * 100
-                st.dataframe(
-                    df_rank[["name", "score", "total", "% Acertos"]].sort_values(
-                        "% Acertos", ascending=False
-                    )
-                )
-                if st.button("🗑️ Limpar resultados deste material"):
-                    st.session_state.leaderboard = [
-                        e
-                        for e in st.session_state.leaderboard
-                        if e.get("material_id") != res_id
-                    ]
-                    save_leaderboard(st.session_state.leaderboard)
-                    st.success("Resultados removidos.")
-                    st.rerun()
+        render_results_tab(materials)
 
     elif section == "config":
         render_auth_config_tab()
