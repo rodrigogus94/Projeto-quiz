@@ -1752,7 +1752,10 @@ def inject_app_chrome(*, hide_toolbar: bool = False) -> None:
 
 
 def inject_login_page_css() -> None:
-    st.markdown(f"<style>{login_page_css()}</style>", unsafe_allow_html=True)
+    st.markdown(
+        f"<style id='kahoot-login-style'>{login_page_css()}</style>",
+        unsafe_allow_html=True,
+    )
 
 
 def inject_login_switch_button_css() -> None:
@@ -1889,6 +1892,30 @@ def clear_login_page_styles() -> None:
             document.documentElement.classList.remove("kahoot-on-login");
             document.querySelectorAll(".kahoot-login-row").forEach((row) => {
                 row.classList.remove("kahoot-login-row");
+            });
+            // Remove os estilos inline aplicados por hideThemeControlsOnLogin()
+            // na tela de login; sem isso o stToolbar (que contém o botão de
+            // expandir a sidebar no Streamlit >= 1.58) fica oculto após o login.
+            const HIDDEN_SELECTORS = [
+                '[data-testid="stSegmentedControl"]',
+                '.kahoot-theme-icons',
+                '.kahoot-menu-section-title',
+                '[data-testid="stToolbar"]',
+                '[data-testid="stHeaderActionElements"]',
+                '[data-testid="stStatusWidget"]',
+                '[data-testid="stMainMenu"]',
+            ];
+            const HIDDEN_PROPS = [
+                "display", "visibility", "height", "max-height",
+                "overflow", "opacity", "pointer-events",
+            ];
+            HIDDEN_SELECTORS.forEach((selector) => {
+                document.querySelectorAll(selector).forEach((el) => {
+                    [el, el.closest(".element-container")].forEach((node) => {
+                        if (!node) return;
+                        HIDDEN_PROPS.forEach((prop) => node.style.removeProperty(prop));
+                    });
+                });
             });
         })();
         """
