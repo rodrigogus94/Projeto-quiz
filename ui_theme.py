@@ -344,23 +344,23 @@ button[data-testid="collapsedControl"]:hover * {
     stroke: var(--primary-color) !important;
     -webkit-text-fill-color: var(--primary-color) !important;
 }
-[data-testid="stAppViewContainer"] .main .block-container,
-[data-testid="stAppViewContainer"] .main p,
-[data-testid="stAppViewContainer"] .main h1,
-[data-testid="stAppViewContainer"] .main h2,
-[data-testid="stAppViewContainer"] .main h3,
-[data-testid="stAppViewContainer"] .main h4,
-[data-testid="stAppViewContainer"] .main h5,
-[data-testid="stAppViewContainer"] .main h6,
-[data-testid="stAppViewContainer"] .main label,
-[data-testid="stAppViewContainer"] .main .stMarkdown,
-[data-testid="stAppViewContainer"] .main [data-testid="stWidgetLabel"],
-[data-testid="stAppViewContainer"] .main [data-testid="stCaption"],
-[data-testid="stAppViewContainer"] .main [data-testid="stMarkdownContainer"],
-[data-testid="stAppViewContainer"] .main [data-testid="stMarkdownContainer"] p,
-[data-testid="stAppViewContainer"] .main [data-testid="stMarkdownContainer"] span,
-[data-testid="stAppViewContainer"] .main [data-testid="stMarkdownContainer"] li,
-[data-testid="stAppViewContainer"] .main [data-testid="stMarkdownContainer"] div {
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .block-container,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) p,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) h1,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) h2,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) h3,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) h4,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) h5,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) h6,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) label,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .stMarkdown,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stWidgetLabel"],
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stCaption"],
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stMarkdownContainer"],
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stMarkdownContainer"] p,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stMarkdownContainer"] span,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stMarkdownContainer"] li,
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stMarkdownContainer"] div {
     color: var(--text-color) !important;
 }
 section[data-testid="stSidebar"] p,
@@ -577,8 +577,8 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] div {
     background-color: transparent !important;
     transition: background-color 0.15s ease, border-color 0.15s ease !important;
 }
-[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked),
-[data-testid="stAppViewContainer"] .main [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] {
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stRadio"] div[role="radiogroup"] > label:has(input:checked),
+[data-testid="stAppViewContainer"] :is(.main, .stMain) [data-testid="stRadio"] div[role="radiogroup"] > label[aria-checked="true"] {
     background-color: color-mix(in srgb, var(--primary-color) 12%, var(--background-color)) !important;
     border-color: color-mix(in srgb, var(--primary-color) 38%, transparent) !important;
 }
@@ -663,8 +663,8 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] label[aria-checked="tru
 [data-testid="stBaseButton-secondaryBorderless"],
 section[data-testid="stSidebar"] .stButton > button[kind="secondary"],
 section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]),
-[data-testid="stAppViewContainer"] .main .stButton > button[kind="secondary"],
-[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]) {
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .stButton > button[kind="secondary"],
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]) {
     color: var(--text-color) !important;
     border: 1px solid var(--kahoot-border-strong) !important;
     background-color: var(--secondary-background-color) !important;
@@ -673,8 +673,8 @@ section[data-testid="stSidebar"] .stButton > button:not([kind="primary"]):not([k
 [data-testid="stBaseButton-primaryFormSubmit"],
 section[data-testid="stSidebar"] .stButton > button[kind="primary"],
 section[data-testid="stSidebar"] .stButton > button[kind="primaryFormSubmit"],
-[data-testid="stAppViewContainer"] .main .stButton > button[kind="primary"],
-[data-testid="stAppViewContainer"] .main .stButton > button[kind="primaryFormSubmit"] {
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .stButton > button[kind="primary"],
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .stButton > button[kind="primaryFormSubmit"] {
     background-color: var(--primary-color) !important;
     color: #ffffff !important;
     border: 1px solid color-mix(in srgb, var(--primary-color) 70%, transparent) !important;
@@ -685,7 +685,7 @@ section[data-testid="stSidebar"] .stButton > button[kind="primaryFormSubmit"],
     color: inherit !important;
 }
 [data-testid="stBaseButton-secondary"]:hover,
-[data-testid="stAppViewContainer"] .main .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):hover {
+[data-testid="stAppViewContainer"] :is(.main, .stMain) .stButton > button:not([kind="primary"]):not([kind="primaryFormSubmit"]):hover {
     background-color: color-mix(in srgb, var(--primary-color) 10%, var(--secondary-background-color)) !important;
     border-color: var(--primary-color) !important;
     color: var(--text-color) !important;
@@ -1087,10 +1087,10 @@ def login_page_css() -> str:
 .kahoot-on-login [data-testid="stDecoration"] {{
     display: none !important;
 }}
-.stApp:has(.kahoot-login-marker) .main {{
+.stApp:has(.kahoot-login-marker) :is(.main, .stMain) {{
     padding-top: 0 !important;
 }}
-.stApp:has(.kahoot-login-marker) .main .block-container {{
+.stApp:has(.kahoot-login-marker) :is(.main, .stMain) .block-container {{
     padding: 0 !important;
     max-width: 100% !important;
     margin: 0 !important;
