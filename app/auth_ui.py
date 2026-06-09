@@ -335,9 +335,7 @@ def render_session_controls():
             with st.popover(
                 "Menu",
                 help="Conta, aparência, recarregar e sair",
-                key="kahoot_account_menu",
                 icon=":material/menu:",
-                type="secondary",
                 use_container_width=True,
             ):
                 st.markdown(menu_account_html, unsafe_allow_html=True)

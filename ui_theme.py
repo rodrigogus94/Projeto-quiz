@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 import streamlit as st
+import streamlit.components.v1 as components
 
 THEME_OPTIONS = ("system", "light", "dark")
 
@@ -794,6 +795,15 @@ def _chrome_icon_colors() -> tuple[str, str]:
     )
 
 
+def _inject_javascript(script: str) -> None:
+    """Executa JavaScript no cliente; compatível com várias versões do Streamlit."""
+    snippet = f"<script>{script}</script>"
+    try:
+        st.html(snippet, unsafe_allow_javascript=True)
+    except TypeError:
+        components.html(snippet, height=0, width=0)
+
+
 def inject_theme_css() -> None:
     """Injeta ou substitui um único bloco de CSS de tema (evita tags duplicadas)."""
     css = _build_theme_css()
@@ -806,9 +816,8 @@ def inject_theme_css() -> None:
         f"<style id='kahoot-theme-override'>{css}</style>",
         unsafe_allow_html=True,
     )
-    st.html(
+    _inject_javascript(
         f"""
-        <script>
         (function () {{
             const css = {css_json};
             const themeChoice = {theme_choice};
@@ -969,9 +978,7 @@ def inject_theme_css() -> None:
             setTimeout(repaintAll, 300);
             setTimeout(repaintAll, 800);
         }})();
-        </script>
-        """,
-        unsafe_allow_javascript=True,
+        """
     )
 
 
@@ -1756,9 +1763,8 @@ def inject_login_switch_button_css() -> None:
 
 
 def inject_login_layout_script() -> None:
-    st.html(
+    _inject_javascript(
         """
-        <script>
         (function () {
             const THEME_SELECTORS = [
                 '[data-testid="stSegmentedControl"]',
@@ -1869,16 +1875,13 @@ def inject_login_layout_script() -> None:
             });
             observer.observe(document.body, { childList: true, subtree: true });
         })();
-        </script>
-        """.replace("{LOGIN_SWITCH_BTN_BG}", LOGIN_SWITCH_BTN_BG),
-        unsafe_allow_javascript=True,
+        """.replace("{LOGIN_SWITCH_BTN_BG}", LOGIN_SWITCH_BTN_BG)
     )
 
 
 def clear_login_page_styles() -> None:
-    st.html(
+    _inject_javascript(
         """
-        <script>
         (function () {
             const style = document.getElementById("kahoot-login-style");
             if (style) style.remove();
@@ -1888,9 +1891,7 @@ def clear_login_page_styles() -> None:
                 row.classList.remove("kahoot-login-row");
             });
         })();
-        </script>
-        """,
-        unsafe_allow_javascript=True,
+        """
     )
 
 
