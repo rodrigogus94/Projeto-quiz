@@ -8,10 +8,11 @@ _APP_DIR = Path(__file__).resolve().parent
 if str(_APP_DIR) not in sys.path:
     sys.path.insert(0, str(_APP_DIR))
 
-import importlib
-
 import streamlit as st
 
+# NÃO usar importlib.reload() aqui: com sessões concorrentes no Streamlit
+# Cloud, o reload manipula sys.modules durante imports de outras threads e
+# causa KeyError intermitente no importlib.
 try:
     import auth_users
 except ImportError as exc:
@@ -22,9 +23,6 @@ except ImportError as exc:
     st.code(str(exc))
     st.caption(f"Pasta do app: `{_APP_DIR}`")
     st.stop()
-
-# Recarrega módulos locais após edições (evita cache desatualizado no hot-reload).
-importlib.reload(auth_users)
 
 _REQUIRED_AUTH = (
     "resolve_unified_google_login",
@@ -39,10 +37,7 @@ if _missing_auth:
     )
     st.stop()
 
-import ui_theme
-
-importlib.reload(ui_theme)
-finalize_ui_theme = ui_theme.finalize_ui_theme
+from ui_theme import finalize_ui_theme
 
 from app.auth_ui import render_login, render_session_controls
 from app.navigation import render_professor_sidebar_nav, render_student_sidebar_nav
