@@ -109,11 +109,13 @@ def logout():
 
 
 def load_student_material(material_id: str) -> dict | None:
+    # Não escrever em st.session_state.selected_material_id aqui: é a key do
+    # selectbox "Escolha o quiz" e modificá-la após o widget ser instanciado
+    # (ex.: clique em "Iniciar quiz") lança StreamlitAPIException.
     material = get_material(material_id)
     if material:
         st.session_state.questions = material["questions"]
         st.session_state.current_material_id = material["id"]
-        st.session_state.selected_material_id = material["id"]
     return material
 
 
