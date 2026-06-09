@@ -36,4 +36,16 @@ D) alternativa D
 
 **Resposta Correta: C**
 ```
+
+**Exportação do Kahoot (PDF ou Markdown):**
+```
+## Pergunta 1
+* **Pergunta:** Enunciado da questão?
+* **Alternativas:**
+  * [ ] A) alternativa A
+  * [X] B) alternativa B (Alternativa Correta)
+  * [ ] C) alternativa C
+  * [ ] D) alternativa D
+```
+A correta é identificada por `[X]` ou pelo marcador `(Alternativa Correta)`.
 """

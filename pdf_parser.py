@@ -23,6 +23,19 @@ GABARITO_LINE = re.compile(
 )
 CORRECTA_MARK = re.compile(r"\(CORRETA\)", re.IGNORECASE)
 
+# Formato Kahoot: "## Pergunta 1" / "Pergunta 1" (sem dois-pontos), campos em
+# bullets ("● Pergunta:", "* **Alternativas:**") e correta via "[X]" ou
+# "(Alternativa Correta)".
+KAHOOT_HEADER = re.compile(r"^#{0,6}\s*Pergunta\s+(\d+)\s*$", re.MULTILINE | re.IGNORECASE)
+KAHOOT_FIELD = re.compile(
+    r"^[*\-●○•]\s*\*{0,2}(Pergunta|Tempo\s+limite|Alternativas|Justificativa)\s*:?\*{0,2}\s*(.*)$",
+    re.IGNORECASE,
+)
+KAHOOT_OPTION = re.compile(
+    r"^(?:[*\-●○•]\s*)?(?:\[\s*([xX])?\s*\]\s*)?([A-D])\)\s*(.*)$"
+)
+ALT_CORRETA_MARK = re.compile(r"\(\s*Alternativa\s+Correta\s*\)", re.IGNORECASE)
+
 
 def _warn(warnings: list | None, msg: str):
     if warnings is not None:
@@ -129,6 +142,93 @@ def _parse_markdown_exam_questions(full_text: str, warnings: list | None = None)
     return questions
 
 
+def _parse_kahoot_question_block(block: str) -> dict | None:
+    question_parts: list[str] = []
+    options: list[list[str]] = []
+    correct: str | None = None
+    current: str | None = None
+
+    for raw in block.splitlines():
+        line = raw.strip()
+        if not line or set(line) <= {"-"}:
+            continue
+
+        field_match = KAHOOT_FIELD.match(line)
+        if field_match:
+            field = field_match.group(1).lower()
+            rest = field_match.group(2).strip()
+            if field == "pergunta":
+                current = "question"
+                if rest:
+                    question_parts.append(rest)
+            else:
+                # "Alternativas:" apenas abre a lista; "Tempo limite" e
+                # "Justificativa" são ignorados (incluindo linhas de continuação).
+                current = None
+            continue
+
+        opt_match = KAHOOT_OPTION.match(line)
+        if opt_match:
+            checked, letter, text = opt_match.groups()
+            letter = letter.upper()
+            is_correct = bool(checked) or bool(ALT_CORRETA_MARK.search(text))
+            text = ALT_CORRETA_MARK.sub("", text).strip()
+            options.append([letter, text])
+            if is_correct:
+                correct = letter
+            current = "option"
+            continue
+
+        # Linha de continuação (texto quebrado em várias linhas, comum em PDF).
+        if current == "question":
+            question_parts.append(line)
+        elif current == "option" and options:
+            if ALT_CORRETA_MARK.search(line):
+                correct = options[-1][0]
+            extra = ALT_CORRETA_MARK.sub("", line).strip()
+            if extra:
+                options[-1][1] = f"{options[-1][1]} {extra}".strip()
+
+    question_text = _clean_text(_strip_markdown_inline(" ".join(question_parts)))
+    opts = [_clean_text(_strip_markdown_inline(text)) for _, text in options[:4]]
+    letters = [letter for letter, _ in options[:4]]
+
+    if (
+        not question_text
+        or len(opts) != 4
+        or any(not o for o in opts)
+        or letters != ["A", "B", "C", "D"]
+        or correct not in "ABCD"
+    ):
+        return None
+
+    return {"question": question_text, "options": opts, "correct": correct}
+
+
+def _parse_kahoot_questions(full_text: str, warnings: list | None = None) -> list:
+    matches = list(KAHOOT_HEADER.finditer(full_text))
+    if not matches:
+        return []
+
+    questions = []
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.end() : block_end]
+
+        parsed = _parse_kahoot_question_block(block)
+        if parsed:
+            questions.append(parsed)
+        else:
+            _warn(
+                warnings,
+                f"Pergunta {num} ignorada: enunciado, 4 opções (A-D) ou marcação "
+                "da correta ([X] / (Alternativa Correta)) incompletos.",
+            )
+
+    return questions
+
+
 def _extract_gabarito(block: str) -> str:
     match = GABARITO_LINE.search(block)
     if not match:
@@ -205,6 +305,9 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
     """
     matches = list(PERGUNTA_HEADER.finditer(full_text))
     if not matches:
+        kahoot = _parse_kahoot_questions(full_text, warnings)
+        if kahoot:
+            return [{"type": "choice", **q} for q in kahoot]
         return _parse_markdown_exam_questions(full_text, warnings)
 
     questions = []
@@ -239,6 +342,9 @@ def parse_questions_from_text(full_text: str, warnings: list | None = None) -> l
     """Parser de quiz — múltipla escolha (formato PDF ou Markdown)."""
     matches = list(PERGUNTA_HEADER.finditer(full_text))
     if not matches:
+        kahoot = _parse_kahoot_questions(full_text, warnings)
+        if kahoot:
+            return kahoot
         return _parse_markdown_quiz_questions(full_text, warnings)
 
     questions = []
