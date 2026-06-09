@@ -379,6 +379,38 @@ section[data-testid="stSidebar"] [data-testid="stRadio"] label p,
 section[data-testid="stSidebar"] [data-testid="stRadio"] div {
     color: var(--text-color) !important;
 }
+/* Textos secundários do Streamlit (captions, métricas, uploader): usar o
+   token do tema em vez do cinza claro interno do Streamlit. */
+[data-testid="stCaptionContainer"],
+[data-testid="stCaptionContainer"] p,
+[data-testid="stCaptionContainer"] span,
+[data-testid="stCaptionContainer"] div,
+.stCaption,
+.stCaption p,
+[data-testid="stMarkdownContainer"] small,
+[data-testid="stMetricLabel"],
+[data-testid="stMetricLabel"] p,
+[data-testid="stMetricLabel"] label,
+[data-testid="stFileUploaderDropzoneInstructions"],
+[data-testid="stFileUploaderDropzoneInstructions"] span,
+[data-testid="stFileUploaderDropzoneInstructions"] small,
+[data-testid="stFileUploaderDropzoneInstructions"] div,
+[data-testid="stFileUploader"] small,
+[data-testid="stFileUploader"] [data-testid="stFileUploaderFileData"],
+[data-testid="stFileUploader"] [data-testid="stFileUploaderFileName"] {
+    color: var(--kahoot-text-muted) !important;
+}
+[data-testid="stExpander"] summary,
+[data-testid="stExpander"] summary p,
+[data-testid="stExpander"] summary span {
+    color: var(--text-color) !important;
+}
+[data-testid="stTextInput"] input::placeholder,
+[data-testid="stTextArea"] textarea::placeholder,
+[data-testid="stNumberInput"] input::placeholder {
+    color: var(--kahoot-text-muted) !important;
+    opacity: 0.75 !important;
+}
 [data-testid="stTextInput"] input,
 [data-testid="stTextArea"] textarea,
 [data-testid="stNumberInput"] input {
