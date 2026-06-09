@@ -77,6 +77,9 @@ def _register_student_name(name: str) -> tuple[bool, str]:
         else:
             st.error(err)
         return False, ""
+    # Vincula a identidade à sessão: o aluno não poderá jogar com outro nome.
+    if st.session_state.get("role") == "student" and not st.session_state.get("current_user"):
+        st.session_state.preferred_student_name = clean
     return True, clean
 
 

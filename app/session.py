@@ -108,6 +108,17 @@ def logout():
     st.rerun()
 
 
+def bound_student_name() -> str | None:
+    """Nome do aluno vinculado à sessão: conta Google ou primeira identificação.
+
+    Quando definido, o aluno não pode mais trocar de nome no quiz/prova.
+    """
+    user = st.session_state.get("current_user")
+    if user and user.get("role") == "student" and user.get("name"):
+        return user["name"]
+    return st.session_state.get("preferred_student_name") or None
+
+
 def load_student_material(material_id: str) -> dict | None:
     # Não escrever em st.session_state.selected_material_id aqui: é a key do
     # selectbox "Escolha o quiz" e modificá-la após o widget ser instanciado

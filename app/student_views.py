@@ -33,6 +33,7 @@ from app.components import (
     render_student_hero,
 )
 from app.session import (
+    bound_student_name,
     finish_quiz,
     get_playable_active_materials,
     load_student_material,
@@ -42,6 +43,33 @@ from app.session import (
     sync_playable_exam,
     sync_playable_material,
 )
+
+
+def _render_student_identity(names: list[str], picker_key: str) -> str:
+    """Nome do aluno: travado quando vinculado à sessão; seleção única caso contrário."""
+    bound = bound_student_name()
+    if bound:
+        if bound in names:
+            st.text_input(
+                "Seu nome",
+                value=bound,
+                disabled=True,
+                key=f"{picker_key}_locked",
+            )
+            st.caption("🔒 Identificação vinculada à sua sessão.")
+            return bound
+        st.warning(
+            f"Sua conta (**{bound}**) ainda não está na lista de alunos aprovados. "
+            "Aguarde a aprovação do administrador."
+        )
+        return ""
+    return st.selectbox(
+        "Seu nome",
+        options=[""] + names,
+        format_func=lambda x: "— Escolha —" if x == "" else x,
+        key=picker_key,
+        help="Após iniciar, o nome fica vinculado à sessão e não pode ser trocado.",
+    )
 
 
 def approved_students() -> list:
@@ -129,17 +157,7 @@ def render_student_quiz_tab():
                 st.caption(f"**{len(mat['questions'])}** perguntas neste quiz")
 
             names = sorted(s["name"] for s in registered)
-            preferred = st.session_state.preferred_student_name
-            default_index = 0
-            if preferred and preferred in names:
-                default_index = names.index(preferred) + 1
-            selected_name = st.selectbox(
-                "Seu nome",
-                options=[""] + names,
-                index=default_index,
-                format_func=lambda x: "— Escolha —" if x == "" else x,
-                key="student_name_select",
-            )
+            selected_name = _render_student_identity(names, "student_name_select")
             st.divider()
             if (
                 st.button("🆕 Iniciar quiz", use_container_width=True, type="primary")
@@ -246,17 +264,7 @@ def render_student_exam_tab():
                 )
 
             names = sorted(s["name"] for s in registered)
-            preferred = st.session_state.preferred_student_name
-            name_index = 0
-            if preferred and preferred in names:
-                name_index = names.index(preferred) + 1
-            student_name = st.selectbox(
-                "Seu nome",
-                [""] + names,
-                index=name_index,
-                format_func=lambda x: "— Escolha —" if x == "" else x,
-                key="exam_student_name",
-            )
+            student_name = _render_student_identity(names, "exam_student_name")
             st.divider()
             if st.button("📋 Abrir prova", type="primary", use_container_width=True) and student_name:
                 st.session_state.current_student_name = student_name
