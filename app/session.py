@@ -172,7 +172,7 @@ def finish_quiz():
 
 
 # Acertos a partir dos quais o quiz é considerado concluído (sem nova tentativa).
-QUIZ_SECOND_CHANCE_MIN_SCORE = 7
+QUIZ_SECOND_CHANCE_MIN_SCORE = 6
 QUIZ_MAX_ATTEMPTS = 2
 
 
@@ -185,36 +185,42 @@ def quiz_attempts_for(name: str, material_id: str) -> list:
     ]
 
 
-def quiz_attempt_permission(name: str, material_id: str) -> tuple[bool, str]:
-    """Regra de tentativas: 2ª oportunidade apenas para quem fez < 7 acertos.
+def quiz_attempt_permission(name: str, material_id: str) -> tuple[bool, str, bool]:
+    """Regra de tentativas do quiz.
 
-    Retorna (pode_jogar, mensagem). A mensagem é informativa quando pode jogar
-    (segunda oportunidade) ou explica o bloqueio quando não pode.
+    - Menos de 6 acertos: pode refazer direto (segunda oportunidade).
+    - 6 ou mais acertos (mesmo 9 ou 10): pode refazer, mas é perguntado
+      se realmente deseja, já que o resultado foi bom.
+    - Limite de 2 tentativas por quiz.
+
+    Retorna (pode_jogar, mensagem, precisa_confirmar).
     """
     attempts = quiz_attempts_for(name, material_id)
     if not attempts:
-        return True, ""
+        return True, "", False
 
     best = max(attempts, key=lambda e: e.get("score", 0))
     best_score = best.get("score", 0)
     best_total = best.get("total", 0)
-    # Em quizzes com menos de 7 perguntas, a nota máxima conta como concluído.
-    target = min(QUIZ_SECOND_CHANCE_MIN_SCORE, best_total or QUIZ_SECOND_CHANCE_MIN_SCORE)
 
-    if best_score >= target:
-        return False, (
-            f"Você já concluiu este quiz com **{best_score} de {best_total}** acertos. "
-            "Bom trabalho!"
-        )
     if len(attempts) >= QUIZ_MAX_ATTEMPTS:
         return False, (
             f"Você já usou suas {QUIZ_MAX_ATTEMPTS} tentativas neste quiz "
             f"(melhor resultado: **{best_score} de {best_total}**)."
-        )
+        ), False
+
+    # Em quizzes com menos de 6 perguntas, a nota máxima conta como boa nota.
+    target = min(QUIZ_SECOND_CHANCE_MIN_SCORE, best_total or QUIZ_SECOND_CHANCE_MIN_SCORE)
+    if best_score < target:
+        return True, (
+            f"Segunda oportunidade: você acertou **{best_score} de {best_total}** "
+            "na primeira tentativa. Boa sorte!"
+        ), False
+
     return True, (
-        f"Segunda oportunidade: você acertou **{best_score} de {best_total}** "
-        "na primeira tentativa. Boa sorte!"
-    )
+        f"Você já concluiu este quiz com **{best_score} de {best_total}** acertos. "
+        "Deseja mesmo refazer? A nova tentativa também será registrada."
+    ), True
 
 
 def sync_playable_material(playable: list) -> str | None:

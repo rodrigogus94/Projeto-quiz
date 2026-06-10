@@ -271,27 +271,37 @@ def render_student_quiz_tab():
             selected_name = _render_student_identity(names, "student_name_select")
             st.divider()
 
-            can_play, attempt_msg = (
+            can_play, attempt_msg, needs_confirm = (
                 quiz_attempt_permission(selected_name, picked_id)
                 if selected_name and mat
-                else (True, "")
+                else (True, "", False)
             )
             if attempt_msg:
-                if can_play:
-                    st.info(attempt_msg)
-                else:
+                if not can_play:
                     st.warning(attempt_msg)
+                elif needs_confirm:
+                    st.warning(attempt_msg)
+                else:
+                    st.info(attempt_msg)
+
+            confirm_ok = True
+            if can_play and needs_confirm and selected_name:
+                confirm_ok = st.checkbox(
+                    "Sim, quero refazer mesmo assim.",
+                    key=f"retry_confirm_{picked_id}",
+                )
 
             if (
                 st.button(
                     "🆕 Iniciar quiz",
                     use_container_width=True,
                     type="primary",
-                    disabled=bool(selected_name) and not can_play,
+                    disabled=bool(selected_name) and (not can_play or not confirm_ok),
                 )
                 and selected_name
                 and mat
                 and can_play
+                and confirm_ok
             ):
                 load_student_material(picked_id)
                 st.session_state.current_student_name = selected_name
@@ -507,11 +517,23 @@ def _render_quiz_results():
 
     _render_results_download("dl_results_quiz_done")
 
-    can_retry, retry_msg = quiz_attempt_permission(
+    can_retry, retry_msg, needs_confirm = quiz_attempt_permission(
         st.session_state.current_student_name,
         st.session_state.current_material_id or "",
     )
-    if can_retry:
+    if can_retry and needs_confirm:
+        st.info(retry_msg)
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("📝 Sim, refazer o quiz", type="primary", use_container_width=True):
+                reset_quiz()
+                st.rerun()
+        with c2:
+            if st.button("🏠 Não, manter meu resultado", type="secondary", use_container_width=True):
+                st.session_state.quiz_finished = False
+                st.session_state.quiz_active = False
+                st.rerun()
+    elif can_retry:
         if retry_msg:
             st.info(retry_msg)
         if st.button("📝 Fazer quiz novamente", type="primary"):
