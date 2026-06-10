@@ -24,7 +24,6 @@ from quiz_storage import (
     get_material,
     load_exam_submissions,
     load_leaderboard,
-    load_students,
     student_submission_for_exam,
 )
 
@@ -94,7 +93,7 @@ def _render_student_identity(names: list[str], picker_key: str) -> str:
 
 
 def approved_students() -> list:
-    return [s for s in load_students() if auth_users.is_approved_student_name(s["name"])]
+    return auth_users.list_approved_students()
 
 
 def _active_exam_id() -> str | None:

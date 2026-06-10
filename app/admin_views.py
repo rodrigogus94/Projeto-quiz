@@ -8,6 +8,62 @@ from google_auth import google_oauth_configured, legacy_password_enabled
 from quiz_storage import update_professor_credentials
 
 
+def _render_backup_tools():
+    st.markdown("---")
+    st.subheader("Backup de contas")
+    st.caption(
+        "O arquivo `backup_aprovados.csv` guarda nome, e-mail e categoria dos usuários "
+        "aprovados. Baixe para salvar uma cópia ou envie um backup salvo para restaurar "
+        "contas (útil após redeploy no Streamlit Cloud)."
+    )
+
+    backup_bytes = auth_users.read_backup_csv_bytes()
+    dl_col, up_col = st.columns(2, gap="large")
+
+    with dl_col:
+        if backup_bytes:
+            st.download_button(
+                "📥 Baixar backup",
+                data=backup_bytes,
+                file_name="backup_aprovados.csv",
+                mime="text/csv",
+                key="download_backup_csv",
+                use_container_width=True,
+            )
+        else:
+            st.info("Ainda não há usuários aprovados para gerar o backup.")
+
+    with up_col:
+        uploaded = st.file_uploader(
+            "Selecione o CSV de backup",
+            type=["csv"],
+            key="upload_backup_csv",
+            label_visibility="collapsed",
+        )
+        replace_existing = st.checkbox(
+            "Substituir todas as contas (cuidado)",
+            key="backup_replace_all",
+            help="Desmarcado: só adiciona contas que ainda não existem. "
+            "Marcado: apaga users.json e usa somente o arquivo enviado.",
+        )
+        if st.button(
+            "📤 Enviar backup",
+            type="primary",
+            key="import_backup_csv",
+            use_container_width=True,
+            disabled=uploaded is None,
+        ):
+            count, err = auth_users.import_users_from_backup(
+                uploaded.getvalue(),
+                merge=not replace_existing,
+            )
+            if err:
+                st.error(err)
+            else:
+                st.success(f"Backup importado: **{count}** conta(s) restaurada(s).")
+                st.rerun()
+
+
 def render_admin_approvals_tab():
     st.subheader("Aprovação de contas")
     st.caption(
@@ -161,6 +217,7 @@ def render_auth_config_tab():
             "Novas contas aguardam aprovação na aba **Aprovações**. "
             "Aqui você edita ou remove professores e alunos já cadastrados."
         )
+        _render_backup_tools()
         tab_prof, tab_stud = st.tabs(["👨‍🏫 Professores", "👨‍🎓 Alunos"])
         with tab_prof:
             render_account_role_manager("professor")

@@ -83,6 +83,10 @@ def _normalize_email(email: str | None) -> str:
     return (email or "").strip().lower()
 
 
+def _normalize_name(name: str) -> str:
+    return " ".join(name.strip().split()).lower()
+
+
 def find_user_by_email(email: str) -> dict | None:
     key = _normalize_email(email)
     if not key:
@@ -110,7 +114,7 @@ def find_user_by_id(user_id: str) -> dict | None:
 
 
 def find_student_by_name(name: str) -> dict | None:
-    key = " ".join(name.strip().split()).lower()
+    key = _normalize_name(name)
     for user in load_users():
         if user.get("role") != "student":
             continue
@@ -186,6 +190,185 @@ def _sync_approved_student_to_roster(name: str) -> None:
     clean = " ".join(name.strip().split())
     if clean and not find_student_by_name(clean):
         add_student(clean)
+
+
+def sync_student_roster_from_users() -> int:
+    """Garante que alunos aprovados em users.json existam em students.json."""
+    from quiz_storage import add_student, find_student_by_name
+
+    added = 0
+    for u in load_users():
+        if u.get("role") != "student" or not is_user_approved(u):
+            continue
+        name = " ".join((u.get("name") or "").strip().split())
+        if not name or find_student_by_name(name):
+            continue
+        _, err = add_student(name)
+        if not err:
+            added += 1
+    return added
+
+
+def _user_from_backup_row(row: dict) -> dict | None:
+    name = (row.get("nome") or "").strip()
+    if not name:
+        return None
+    email = _normalize_email(row.get("email")) or None
+    category = (row.get("categoria") or "").strip()
+    role = "professor" if category == "Professor" else "student"
+    user = {
+        "id": str(uuid.uuid4()),
+        "email": email,
+        "name": name,
+        "google_id": None,
+        "picture": None,
+        "role": role,
+        "auth_provider": "restored",
+        "status": "approved",
+        "active": True,
+        "created_at": row.get("cadastrado_em") or datetime.now(timezone.utc).isoformat(),
+    }
+    updated = (row.get("atualizado_em") or "").strip()
+    if updated:
+        user["updated_at"] = updated
+    if email and is_system_admin(email):
+        user["is_admin"] = True
+        user["role"] = "professor"
+    return user
+
+
+def _parse_backup_csv(content: str | bytes) -> tuple[list[dict], str | None]:
+    text = content.decode("utf-8-sig") if isinstance(content, (bytes, bytearray)) else content
+    if not text.strip():
+        return [], "O arquivo está vazio."
+    try:
+        rows = list(csv.DictReader(text.splitlines(), delimiter=";"))
+    except csv.Error:
+        return [], "Não foi possível ler o CSV. Use o formato backup_aprovados.csv."
+    if not rows:
+        return [], "Nenhuma linha encontrada no arquivo."
+    fieldnames = {f.lower() for f in (rows[0].keys() or [])}
+    if "nome" not in fieldnames:
+        return [], "Cabeçalho inválido. O arquivo precisa da coluna **nome**."
+    users = [u for row in rows if (u := _user_from_backup_row(row))]
+    if not users:
+        return [], "Nenhum usuário válido encontrado no backup."
+    return users, None
+
+
+def refresh_backup_file() -> None:
+    """Regenera backup_aprovados.csv a partir de users.json."""
+    _write_approved_backup(load_users())
+
+
+def read_backup_csv_bytes() -> bytes | None:
+    """Conteúdo atual do CSV de backup (gerado na hora)."""
+    refresh_backup_file()
+    if not BACKUP_APPROVED_PATH.exists():
+        return None
+    try:
+        return BACKUP_APPROVED_PATH.read_bytes()
+    except OSError:
+        return None
+
+
+def _backup_user_exists(users: list[dict], candidate: dict) -> bool:
+    email = _normalize_email(candidate.get("email"))
+    if email:
+        return any(_normalize_email(u.get("email")) == email for u in users)
+    if candidate.get("role") == "student":
+        key = _normalize_name(candidate.get("name", ""))
+        return any(
+            u.get("role") == "student" and _normalize_name(u.get("name", "")) == key
+            for u in users
+        )
+    return any(
+        u.get("role") == "professor"
+        and _normalize_name(u.get("name", "")) == _normalize_name(candidate.get("name", ""))
+        for u in users
+    )
+
+
+def import_users_from_backup(
+    content: str | bytes, *, merge: bool = True
+) -> tuple[int, str | None]:
+    """Importa contas aprovadas de um CSV de backup.
+
+    Com merge=True (padrão), acrescenta apenas usuários que ainda não existem.
+    Com merge=False, substitui users.json pelo conteúdo do arquivo.
+    """
+    imported_rows, err = _parse_backup_csv(content)
+    if err:
+        return 0, err
+
+    if merge:
+        users = load_users()
+        added = 0
+        for row_user in imported_rows:
+            if _backup_user_exists(users, row_user):
+                continue
+            users.append(row_user)
+            added += 1
+        if not added:
+            return 0, "Nenhuma conta nova para importar — todas já existem no sistema."
+        save_users(users)
+        sync_student_roster_from_users()
+        return added, None
+
+    save_users(imported_rows)
+    sync_student_roster_from_users()
+    return len(imported_rows), None
+
+
+def restore_users_from_backup_if_empty() -> int:
+    """Recupera users.json a partir do CSV de backup quando o JSON estiver vazio."""
+    if load_users():
+        return 0
+    if not BACKUP_APPROVED_PATH.exists():
+        return 0
+    try:
+        content = BACKUP_APPROVED_PATH.read_bytes()
+    except OSError:
+        return 0
+    count, _ = import_users_from_backup(content, merge=False)
+    return count
+
+
+def list_approved_students() -> list[dict]:
+    """Alunos liberados para quiz/prova — une users.json e students.json."""
+    from quiz_storage import find_student_by_name, load_students
+
+    seen: set[str] = set()
+    result: list[dict] = []
+
+    for u in sorted(load_users(), key=lambda x: (x.get("name") or "").lower()):
+        if u.get("role") != "student" or not u.get("active", True):
+            continue
+        if not is_user_approved(u):
+            continue
+        name = " ".join((u.get("name") or "").split())
+        key = name.lower()
+        if not name or key in seen:
+            continue
+        seen.add(key)
+        roster = find_student_by_name(name)
+        result.append({"id": roster["id"] if roster else u["id"], "name": name})
+
+    for s in sorted(load_students(), key=lambda x: x["name"].lower()):
+        key = _normalize_name(s["name"])
+        if key in seen:
+            continue
+        if is_approved_student_name(s["name"]):
+            seen.add(key)
+            result.append({"id": s["id"], "name": s["name"]})
+
+    return result
+
+
+def bootstrap_data_store() -> None:
+    """Sincroniza arquivos de dados ao iniciar o app."""
+    restore_users_from_backup_if_empty()
+    sync_student_roster_from_users()
 
 
 def approve_user(user_id: str) -> str | None:

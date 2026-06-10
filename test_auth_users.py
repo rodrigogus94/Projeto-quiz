@@ -4,7 +4,10 @@ import uuid
 from auth_users import (
     approve_professor,
     approve_user,
+    bootstrap_data_store,
     delete_user_account,
+    import_users_from_backup,
+    read_backup_csv_bytes,
     ensure_name_student_user,
     find_student_by_name,
     find_user_by_email,
@@ -12,12 +15,15 @@ from auth_users import (
     get_pending_professors,
     get_pending_users,
     is_system_admin,
+    list_approved_students,
     register_student_request,
     resolve_professor_login,
     resolve_unified_google_login,
+    sync_student_roster_from_users,
     update_user_account,
     upsert_google_user,
 )
+from quiz_storage import find_student_by_name as roster_find_student
 from quiz_storage import load_config, save_config
 
 
@@ -160,6 +166,36 @@ class TestAuthUsers(unittest.TestCase):
         if admin:
             err = delete_user_account(admin["id"])
             self.assertIsNotNone(err)
+
+    def test_sync_student_roster_from_users(self):
+        name = f"Sync {uuid.uuid4().hex[:8]}"
+        ensure_name_student_user(name, auto_approve=True)
+        self.assertIsNotNone(roster_find_student(name))
+        added = sync_student_roster_from_users()
+        self.assertGreaterEqual(added, 0)
+        approved = list_approved_students()
+        self.assertTrue(any(s["name"] == name for s in approved))
+
+    def test_bootstrap_data_store_runs(self):
+        bootstrap_data_store()
+        self.assertIsInstance(list_approved_students(), list)
+
+    def test_read_backup_csv_bytes(self):
+        ensure_name_student_user(f"Backup {uuid.uuid4().hex[:6]}", auto_approve=True)
+        data = read_backup_csv_bytes()
+        self.assertIsNotNone(data)
+        self.assertIn(b"nome", data)
+
+    def test_import_users_from_backup_merge(self):
+        name = f"Import {uuid.uuid4().hex[:8]}"
+        csv_text = (
+            "nome;email;categoria;cadastrado_em;atualizado_em\n"
+            f"{name};;Aluno;2026-06-10T00:00:00+00:00;\n"
+        )
+        count, err = import_users_from_backup(csv_text, merge=True)
+        self.assertIsNone(err)
+        self.assertEqual(count, 1)
+        self.assertIsNotNone(find_student_by_name(name))
 
 
 if __name__ == "__main__":
