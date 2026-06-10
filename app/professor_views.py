@@ -23,7 +23,10 @@ from quiz_storage import (
     leaderboard_for_material,
     list_exams,
     list_materials,
+    load_exam_submissions,
+    load_leaderboard,
     load_students,
+    purge_student_results,
     student_quiz_stats,
     submissions_for_exam,
     toggle_exam_active,
@@ -107,6 +110,7 @@ def render_students_tab():
     students = load_students()
     if not students:
         st.info("Nenhum aluno cadastrado. Adicione alunos pelo formulário acima.")
+        _render_orphan_results_cleanup([])
         return
 
     st.markdown(f"**Total:** {len(students)} aluno(s)")
@@ -144,8 +148,55 @@ def render_students_tab():
             with ec2:
                 if st.button("🗑️ Remover", key=f"del_student_{s['id']}"):
                     delete_student(s["id"])
-                    st.success("Aluno removido.")
+                    st.success("Aluno removido (incluindo resultados de quizzes e provas).")
                     st.rerun()
+
+    _render_orphan_results_cleanup(students)
+
+
+def _render_orphan_results_cleanup(students: list):
+    """Lista resultados de alunos que não existem mais e permite removê-los."""
+    roster_keys = {s["name"].strip().lower() for s in students}
+
+    orphans: dict[str, dict] = {}
+    for e in load_leaderboard():
+        n = (e.get("name") or "").strip()
+        if n and n.lower() not in roster_keys:
+            orphans.setdefault(n, {"quiz": 0, "provas": 0})["quiz"] += 1
+    for sub in load_exam_submissions():
+        n = (sub.get("student_name") or "").strip()
+        if n and n.lower() not in roster_keys:
+            orphans.setdefault(n, {"quiz": 0, "provas": 0})["provas"] += 1
+
+    if not orphans:
+        return
+
+    st.markdown("---")
+    st.subheader("🧹 Resultados de alunos removidos")
+    st.caption(
+        "Estes nomes aparecem nos resultados, mas não estão mais na lista de alunos. "
+        "Você pode apagar os dados deles definitivamente."
+    )
+    for name in sorted(orphans, key=str.lower):
+        info = orphans[name]
+        c1, c2 = st.columns([4, 1], vertical_alignment="center")
+        with c1:
+            st.write(
+                f"**{name}** — {info['quiz']} resultado(s) de quiz, "
+                f"{info['provas']} prova(s) enviada(s)"
+            )
+        with c2:
+            if st.button(
+                "Apagar dados",
+                key=f"purge_orphan_{name.lower()}",
+                use_container_width=True,
+            ):
+                stats = purge_student_results(name)
+                st.success(
+                    f"Dados de **{name}** apagados: {stats['quiz_removed']} quiz(zes), "
+                    f"{stats['exam_removed']} prova(s)."
+                )
+                st.rerun()
 
 
 def render_exam_question_preview(questions: list, show_gabarito: bool = True):

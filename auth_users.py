@@ -446,6 +446,11 @@ def delete_user_account(user_id: str) -> str | None:
 
     if target.get("role") == "student":
         _remove_student_roster(target.get("name", ""))
+        # Remove também os resultados (quizzes/provas), inclusive os gravados
+        # apenas com o e-mail da conta, para não deixar dados órfãos.
+        from quiz_storage import purge_student_results
+
+        purge_student_results(target.get("name", ""), target.get("email"))
 
     users = [u for u in load_users() if u["id"] != user_id]
     save_users(users)

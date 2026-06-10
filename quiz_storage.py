@@ -275,9 +275,44 @@ def update_student(student_id: str, name: str) -> str | None:
     return "Aluno não encontrado."
 
 
+def purge_student_results(student_name: str, student_email: str | None = None) -> dict:
+    """Remove todos os resultados (quizzes e provas) de um aluno.
+
+    Usado quando o aluno é excluído, para não deixar dados órfãos.
+    """
+    name_key = _normalize_name(student_name)
+    email_key = (student_email or "").strip().lower()
+
+    def _is_target(name: str | None, email: str | None) -> bool:
+        if name_key and _normalize_name(name or "") == name_key:
+            return True
+        return bool(email_key) and (email or "").strip().lower() == email_key
+
+    board = load_leaderboard()
+    kept_board = [
+        e for e in board if not _is_target(e.get("name"), e.get("student_email"))
+    ]
+    quiz_removed = len(board) - len(kept_board)
+    if quiz_removed:
+        save_leaderboard(kept_board)
+
+    subs = load_exam_submissions()
+    kept_subs = [
+        s for s in subs if not _is_target(s.get("student_name"), s.get("student_email"))
+    ]
+    exam_removed = len(subs) - len(kept_subs)
+    if exam_removed:
+        save_exam_submissions(kept_subs)
+
+    return {"quiz_removed": quiz_removed, "exam_removed": exam_removed}
+
+
 def delete_student(student_id: str) -> None:
-    students = [s for s in load_students() if s["id"] != student_id]
-    save_students(students)
+    students = load_students()
+    target = next((s for s in students if s["id"] == student_id), None)
+    save_students([s for s in students if s["id"] != student_id])
+    if target:
+        purge_student_results(target["name"])
 
 
 def student_quiz_stats(student_name: str) -> dict:
