@@ -1,17 +1,19 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import streamlit as st
 
 import auth_users
 import quiz_storage
 from google_auth import clear_oauth_session
 from quiz_storage import (
+    append_leaderboard_entry,
     get_active_materials,
     get_material,
     leaderboard_for_material,
     load_leaderboard,
     migrate_legacy_leaderboard,
-    save_leaderboard,
 )
 
 
@@ -148,16 +150,22 @@ def finish_quiz():
         return
     total = len(st.session_state.questions)
     score = sum(st.session_state.student_answers)
-    st.session_state.leaderboard.append(
-        {
-            "material_id": st.session_state.current_material_id,
-            "name": st.session_state.current_student_name,
-            "score": score,
-            "total": total,
-            "responses": st.session_state.student_answers.copy(),
-        }
-    )
-    save_leaderboard(st.session_state.leaderboard)
+    user = st.session_state.get("current_user") or {}
+    entry = {
+        "material_id": st.session_state.current_material_id,
+        "name": st.session_state.current_student_name,
+        "score": score,
+        "total": total,
+        "responses": st.session_state.student_answers.copy(),
+        # Identidade da conta (Google) — permite recuperar o histórico do aluno
+        # mesmo após recarregar a página ou abrir nova sessão.
+        "student_email": (user.get("email") or "").strip().lower() or None,
+        "student_user_id": user.get("id"),
+        "submitted_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Append atômico direto no arquivo: a cópia da sessão pode estar
+    # desatualizada e sobrescreveria resultados de outros alunos.
+    st.session_state.leaderboard = append_leaderboard_entry(entry)
     st.session_state.quiz_active = False
     st.session_state.quiz_finished = True
     st.session_state.answer_feedback = None

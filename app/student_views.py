@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+import pandas as pd
 import streamlit as st
 
 import auth_users
@@ -19,6 +20,8 @@ from quiz_storage import (
     get_active_materials,
     get_exam,
     get_material,
+    load_exam_submissions,
+    load_leaderboard,
     load_students,
 )
 
@@ -74,6 +77,85 @@ def _render_student_identity(names: list[str], picker_key: str) -> str:
 
 def approved_students() -> list:
     return [s for s in load_students() if auth_users.is_approved_student_name(s["name"])]
+
+
+def _format_when(iso_ts: str | None) -> str:
+    if not iso_ts:
+        return "—"
+    return iso_ts[:16].replace("T", " ")
+
+
+def _my_identity_keys() -> tuple[str, str]:
+    """(email, nome normalizado) da identidade vinculada à sessão."""
+    user = st.session_state.get("current_user") or {}
+    email = (user.get("email") or "").strip().lower()
+    name = (bound_student_name() or "").strip().lower()
+    return email, name
+
+
+def _render_my_quiz_history():
+    """Resultados salvos do aluno — recuperados pela conta (e-mail) ou nome."""
+    email, name_key = _my_identity_keys()
+    if not email and not name_key:
+        return
+
+    mine = [
+        e
+        for e in load_leaderboard()
+        if (email and (e.get("student_email") or "").strip().lower() == email)
+        or (name_key and e.get("name", "").strip().lower() == name_key)
+    ]
+
+    st.markdown("#### 📜 Meus resultados")
+    if not mine:
+        st.caption("Você ainda não concluiu nenhum quiz.")
+        return
+    rows = []
+    for e in mine:
+        mat = get_material(e.get("material_id") or "")
+        pct = (e["score"] / e["total"] * 100) if e.get("total") else 0.0
+        rows.append(
+            {
+                "Quiz": mat["title"] if mat else "(material removido)",
+                "Acertos": f"{e['score']}/{e['total']}",
+                "% Acertos": round(pct, 1),
+                "Quando (UTC)": _format_when(e.get("submitted_at")),
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_my_exam_history():
+    """Provas já enviadas pelo aluno — persistidas entre sessões."""
+    email, name_key = _my_identity_keys()
+    if not name_key and not email:
+        return
+
+    mine = [
+        s
+        for s in load_exam_submissions()
+        if (name_key and s.get("student_name", "").strip().lower() == name_key)
+        or (email and (s.get("student_email") or "").strip().lower() == email)
+    ]
+
+    st.markdown("#### 📜 Minhas provas enviadas")
+    if not mine:
+        st.caption("Você ainda não enviou nenhuma prova.")
+        return
+    rows = []
+    for s in mine:
+        exam = get_exam(s.get("exam_id") or "")
+        counts = (s.get("summary") or {}).get("counts", {})
+        rows.append(
+            {
+                "Prova": exam["title"] if exam else "(prova removida)",
+                "A": counts.get("A", 0),
+                "PA": counts.get("PA", 0),
+                "NA": counts.get("NA", 0),
+                "Enviada em (UTC)": _format_when(s.get("submitted_at")),
+            }
+        )
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
 
 def render_student_panel():
@@ -221,6 +303,9 @@ def render_student_quiz_tab():
         else:
             st.caption("Configure o quiz à esquerda e clique em **Iniciar quiz** para começar.")
 
+        st.divider()
+        _render_my_quiz_history()
+
 
 def get_playable_active_exams() -> list:
     return [e for e in get_active_exams() if e.get("questions")]
@@ -297,6 +382,9 @@ def render_student_exam_tab():
                 f"Prova com {summary['total']} questões. Responda com calma e envie ao final.",
             )
         st.metric("Provas ativas", len(playable_exams))
+
+        st.divider()
+        _render_my_exam_history()
 
 
 def _render_quiz_flow():
@@ -464,10 +552,12 @@ def _render_exam_flow():
                     )
 
             summary = summarize_answers(graded)
+            user = st.session_state.get("current_user") or {}
             submission = {
                 "id": str(uuid.uuid4()),
                 "exam_id": exam["id"],
                 "student_name": st.session_state.current_student_name,
+                "student_email": (user.get("email") or "").strip().lower() or None,
                 "answers": graded,
                 "summary": summary,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),

@@ -194,6 +194,21 @@ def leaderboard_for_material(material_id: str) -> list:
     return [e for e in load_leaderboard() if e.get("material_id") == material_id]
 
 
+def append_leaderboard_entry(entry: dict) -> list:
+    """Acrescenta um resultado lendo o arquivo na hora (evita sobrescrever
+    resultados salvos por outras sessões com uma cópia desatualizada)."""
+    board = load_leaderboard()
+    board.append(entry)
+    save_leaderboard(board)
+    return board
+
+
+def clear_leaderboard_for_material(material_id: str) -> list:
+    board = [e for e in load_leaderboard() if e.get("material_id") != material_id]
+    save_leaderboard(board)
+    return board
+
+
 def migrate_legacy_leaderboard():
     """Move leaderboard.json da raiz do projeto para data/."""
     legacy = Path(__file__).parent / "leaderboard.json"

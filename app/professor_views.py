@@ -9,6 +9,7 @@ from pdf_export import build_exam_pdf_bytes, export_filename
 from pdf_parser import exam_summary
 from quiz_storage import (
     add_student,
+    clear_leaderboard_for_material,
     create_exam,
     create_material,
     delete_exam,
@@ -23,7 +24,6 @@ from quiz_storage import (
     list_exams,
     list_materials,
     load_students,
-    save_leaderboard,
     student_quiz_stats,
     submissions_for_exam,
     toggle_exam_active,
@@ -330,8 +330,14 @@ def render_results_tab(materials: list):
         st.info("Sem materiais para analisar.")
         return
 
-    mat_options = {m["title"]: m["id"] for m in materials}
-    res_title = st.selectbox("Material", list(mat_options.keys()), key="res_mat")
+    col_sel, col_refresh = st.columns([3, 1], vertical_alignment="bottom")
+    with col_sel:
+        mat_options = {m["title"]: m["id"] for m in materials}
+        res_title = st.selectbox("Material", list(mat_options.keys()), key="res_mat")
+    with col_refresh:
+        if st.button("🔄 Atualizar", use_container_width=True):
+            st.rerun()
+    st.caption("Os resultados são lidos do armazenamento a cada atualização da página.")
     res_id = mat_options[res_title]
     material = get_material(res_id)
     entries = leaderboard_for_material(res_id)
@@ -444,12 +450,7 @@ def render_results_tab(materials: list):
 
     st.divider()
     if st.button("🗑️ Limpar resultados deste material"):
-        st.session_state.leaderboard = [
-            e
-            for e in st.session_state.leaderboard
-            if e.get("material_id") != res_id
-        ]
-        save_leaderboard(st.session_state.leaderboard)
+        st.session_state.leaderboard = clear_leaderboard_for_material(res_id)
         st.success("Resultados removidos.")
         st.rerun()
 
