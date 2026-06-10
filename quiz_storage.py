@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 
 DATA_DIR = Path(__file__).parent / "data"
@@ -389,12 +389,69 @@ def toggle_exam_active(exam_id: str) -> bool:
     return active
 
 
-def create_exam(title: str, questions: list) -> dict:
+def build_deadline_iso(deadline_date, deadline_time=None) -> str | None:
+    """Combina data/hora informadas pelo professor (Brasília UTC-3) em ISO UTC."""
+    if not deadline_date:
+        return None
+    br_tz = timezone(timedelta(hours=-3))
+    t = deadline_time or time(23, 59)
+    dt = datetime.combine(deadline_date, t, tzinfo=br_tz)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def exam_deadline_dt(exam: dict) -> datetime | None:
+    return _parse_iso_datetime(exam.get("deadline_at"))
+
+
+def exam_is_past_deadline(exam: dict, *, now: datetime | None = None) -> bool:
+    deadline = exam_deadline_dt(exam)
+    if not deadline:
+        return False
+    ref = now or datetime.now(timezone.utc)
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    return ref > deadline
+
+
+def exam_deadline_label(exam: dict) -> str | None:
+    deadline = exam_deadline_dt(exam)
+    if not deadline:
+        return None
+    return deadline.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+
+
+def student_submission_for_exam(
+    student_name: str, exam_id: str, student_email: str | None = None
+) -> dict | None:
+    name_key = _normalize_name(student_name)
+    email_key = (student_email or "").strip().lower()
+    matches = []
+    for s in load_exam_submissions():
+        if s.get("exam_id") != exam_id:
+            continue
+        if name_key and _normalize_name(s.get("student_name", "")) == name_key:
+            matches.append(s)
+        elif email_key and (s.get("student_email") or "").strip().lower() == email_key:
+            matches.append(s)
+    return matches[-1] if matches else None
+
+
+def create_exam(title: str, questions: list, deadline_at: str | None = None) -> dict:
     exam = {
         "id": str(uuid.uuid4()),
         "title": title.strip() or "Prova sem título",
         "questions": questions,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "deadline_at": deadline_at,
     }
     store = load_exams_store()
     store["exams"].append(exam)
@@ -410,6 +467,20 @@ def update_exam(exam_id: str, title: str, questions: list) -> bool:
         if e["id"] == exam_id:
             e["title"] = title.strip() or e["title"]
             e["questions"] = questions
+            e["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_exams_store(store)
+            return True
+    return False
+
+
+def update_exam_deadline(exam_id: str, deadline_at: str | None) -> bool:
+    store = load_exams_store()
+    for e in store["exams"]:
+        if e["id"] == exam_id:
+            if deadline_at:
+                e["deadline_at"] = deadline_at
+            else:
+                e.pop("deadline_at", None)
             e["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_exams_store(store)
             return True

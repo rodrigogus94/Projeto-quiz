@@ -50,7 +50,8 @@ def _build_body(student_name: str, student_email: str | None, extra_note: str) -
     lines = [
         "Olá, professor!",
         "",
-        "Segue em anexo o arquivo de resultados gerado automaticamente pelo app.",
+        "Segue em anexo os arquivos de resultados gerados automaticamente pelo app "
+        "(JSON para importação e Markdown para leitura).",
         "",
         f"Aluno: {student_name}",
     ]
@@ -70,11 +71,13 @@ def send_results_email(
     *,
     student_name: str,
     student_email: str | None,
-    file_bytes: bytes,
-    filename: str,
+    json_bytes: bytes,
+    json_filename: str,
+    markdown_bytes: bytes | None = None,
+    markdown_filename: str | None = None,
     extra_note: str = "",
 ) -> str | None:
-    """Envia o e-mail com o anexo gerado pelo app. Retorna mensagem de erro ou None."""
+    """Envia o e-mail com anexos gerados pelo app. Retorna mensagem de erro ou None."""
     cfg = _email_secrets()
     to_addr = professor_email()
     if not to_addr:
@@ -93,11 +96,18 @@ def send_results_email(
         msg["Reply-To"] = student_email
     msg.set_content(_build_body(student_name, student_email, extra_note))
     msg.add_attachment(
-        file_bytes,
+        json_bytes,
         maintype="application",
         subtype="json",
-        filename=filename,
+        filename=json_filename,
     )
+    if markdown_bytes and markdown_filename:
+        msg.add_attachment(
+            markdown_bytes,
+            maintype="text",
+            subtype="markdown",
+            filename=markdown_filename,
+        )
 
     host = (cfg.get("smtp_host") or "smtp.gmail.com").strip()
     try:
@@ -132,7 +142,7 @@ def mailto_link(student_name: str, student_email: str | None) -> str:
         _build_body(
             student_name,
             student_email,
-            "(Anexei o arquivo de resultados baixado no app.)",
+            "(Anexei os arquivos JSON e Markdown baixados no app.)",
         )
     )
     return f"mailto:{professor_email()}?subject={subject}&body={body}"

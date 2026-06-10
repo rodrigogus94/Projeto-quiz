@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import time
+
 import pandas as pd
 import streamlit as st
 
@@ -9,8 +11,11 @@ from pdf_export import build_exam_pdf_bytes, export_filename
 from pdf_parser import exam_summary
 from quiz_storage import (
     add_student,
+    build_deadline_iso,
     clear_leaderboard_for_material,
     create_exam,
+    exam_deadline_label,
+    exam_is_past_deadline,
     create_material,
     delete_exam,
     delete_material,
@@ -31,6 +36,7 @@ from quiz_storage import (
     submissions_for_exam,
     toggle_exam_active,
     toggle_material_active,
+    update_exam_deadline,
     update_exam_submission,
     update_material,
     update_student,
@@ -226,11 +232,25 @@ def render_exams_tab():
         type=UPLOAD_FILE_TYPES,
         key="exam_pdf",
     )
+    use_deadline = st.checkbox("Definir prazo de entrega", key="exam_use_deadline")
+    deadline_at = None
+    if use_deadline:
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            dl_date = st.date_input("Data limite", key="exam_dl_date")
+        with dl_col2:
+            dl_time = st.time_input(
+                "Hora limite (Brasília)",
+                value=time(23, 59),
+                key="exam_dl_time",
+            )
+        deadline_at = build_deadline_iso(dl_date, dl_time)
+        st.caption("Após o prazo, o aluno só pode **revisar** a prova — não enviar respostas.")
 
     if st.button("📄 Importar prova", type="primary") and uploaded and new_title.strip():
         questions = parse_exam_from_upload(uploaded)
         if questions:
-            create_exam(new_title.strip(), questions)
+            create_exam(new_title.strip(), questions, deadline_at=deadline_at)
             summary = exam_summary(questions)
             st.success(
                 f"Prova criada: {summary['total']} questões "
@@ -254,6 +274,10 @@ def render_exams_tab():
             f"{summary['total']} questões "
             f"({summary['choice']} MC, {summary['justify']} just.)"
         )
+        dl_label = exam_deadline_label(ex)
+        if dl_label:
+            status = "encerrada" if exam_is_past_deadline(ex) else "aberta"
+            label += f" · ⏰ até {dl_label} ({status})"
         c1, c2, c3 = st.columns([4, 1, 1])
         with c1:
             st.write(label)
@@ -265,6 +289,32 @@ def render_exams_tab():
         with c3:
             if st.button("Excluir", key=f"exam_del_{ex['id']}"):
                 delete_exam(ex["id"])
+                st.rerun()
+        with st.expander(f"⏰ Prazo — {ex['title']}", expanded=False):
+            has_dl = bool(ex.get("deadline_at"))
+            set_dl = st.checkbox(
+                "Ativar prazo de entrega",
+                value=has_dl,
+                key=f"exam_has_dl_{ex['id']}",
+            )
+            new_deadline = None
+            if set_dl:
+                ec1, ec2 = st.columns(2)
+                with ec1:
+                    ed_date = st.date_input(
+                        "Data limite",
+                        key=f"exam_ed_date_{ex['id']}",
+                    )
+                with ec2:
+                    ed_time = st.time_input(
+                        "Hora (Brasília)",
+                        value=time(23, 59),
+                        key=f"exam_ed_time_{ex['id']}",
+                    )
+                new_deadline = build_deadline_iso(ed_date, ed_time)
+            if st.button("💾 Salvar prazo", key=f"exam_save_dl_{ex['id']}"):
+                update_exam_deadline(ex["id"], new_deadline if set_dl else None)
+                st.success("Prazo atualizado.")
                 st.rerun()
 
     st.markdown("---")
@@ -386,9 +436,9 @@ def _render_import_results_section():
 
     with st.expander("📂 Importar arquivo de resultados de aluno", expanded=bool(flash)):
         st.caption(
-            "O aluno gera o arquivo na área dele (botão **Baixar arquivo de resultados**) "
-            "e envia para você. Ao importar, os resultados são adicionados ao aluno "
-            "confirmado abaixo, sem duplicar tentativas já registradas."
+            "O aluno envia o arquivo **.json** (ou por e-mail com JSON + Markdown). "
+            "Importe apenas o **JSON** aqui — o Markdown é só para leitura. "
+            "Os resultados são adicionados ao aluno confirmado, sem duplicar o que já existe."
         )
         up = st.file_uploader(
             "Arquivo de resultados (.json)",

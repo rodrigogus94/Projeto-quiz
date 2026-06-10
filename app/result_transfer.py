@@ -79,10 +79,77 @@ def export_bytes(payload: dict) -> bytes:
     return json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8")
 
 
-def export_filename(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", _norm(name)).strip("-") or "aluno"
+def _format_when(iso_ts: str | None) -> str:
+    if not iso_ts:
+        return "—"
+    return iso_ts[:16].replace("T", " ") + " UTC"
+
+
+def export_markdown(payload: dict) -> str:
+    """Versão legível dos resultados (o professor importa o arquivo .json)."""
+    student = payload.get("student") or {}
+    lines = [
+        f"# Resultados — {student.get('name', 'Aluno')}",
+        "",
+        f"- **E-mail:** {student.get('email') or '—'}",
+        f"- **Gerado em:** {_format_when(payload.get('generated_at'))}",
+        f"- **Código de verificação:** `{payload.get('checksum', '')}`",
+        "",
+        "> Para registrar no sistema, o professor deve importar o arquivo **.json** "
+        "correspondente (aba Resultados → Importar arquivo de resultados).",
+        "",
+    ]
+
+    quiz_results = payload.get("quiz_results") or []
+    if quiz_results:
+        lines += ["## Quizzes", ""]
+        for e in quiz_results:
+            total = e.get("total") or 0
+            score = e.get("score", 0)
+            pct = (score / total * 100) if total else 0.0
+            title = e.get("material_title") or "(material desconhecido)"
+            lines += [
+                f"### {title}",
+                f"- Acertos: **{score}/{total}** ({pct:.1f}%)",
+                f"- Quando: {_format_when(e.get('submitted_at'))}",
+                "",
+            ]
+
+    exam_submissions = payload.get("exam_submissions") or []
+    if exam_submissions:
+        lines += ["## Provas", ""]
+        for s in exam_submissions:
+            title = s.get("exam_title") or "(prova desconhecida)"
+            summary = s.get("summary") or {}
+            counts = summary.get("counts", {})
+            pct = summary.get("percent")
+            pct_txt = f"{pct:.0f}%" if pct is not None else "—"
+            lines += [
+                f"### {title}",
+                f"- Pontuação: **{summary.get('total_points', 0):.1f}** / "
+                f"{summary.get('max_points', 0):.0f} ({pct_txt})",
+                f"- A: {counts.get('A', 0)} · PA: {counts.get('PA', 0)} · "
+                f"NA: {counts.get('NA', 0)}",
+                f"- Enviada em: {_format_when(s.get('submitted_at'))}",
+                "",
+            ]
+
+    if not quiz_results and not exam_submissions:
+        lines.append("_Nenhum resultado registrado._")
+    return "\n".join(lines)
+
+
+def export_markdown_bytes(payload: dict) -> bytes:
+    return export_markdown(payload).encode("utf-8")
+
+
+def _export_slug(name: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", _norm(name)).strip("-") or "aluno"
+
+
+def export_filename(name: str, *, ext: str = "json") -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    return f"resultados_{slug}_{stamp}.json"
+    return f"resultados_{_export_slug(name)}_{stamp}.{ext}"
 
 
 def parse_student_export(raw: bytes) -> tuple[dict | None, str | None]:

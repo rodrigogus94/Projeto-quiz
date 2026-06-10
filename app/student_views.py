@@ -15,6 +15,8 @@ from pdf_export import build_exam_pdf_bytes, export_filename
 from pdf_parser import exam_summary, question_for_student
 from quiz_storage import (
     add_exam_submission,
+    exam_deadline_label,
+    exam_is_past_deadline,
     get_active_exams,
     get_active_materials,
     get_exam,
@@ -22,6 +24,7 @@ from quiz_storage import (
     load_exam_submissions,
     load_leaderboard,
     load_students,
+    student_submission_for_exam,
 )
 
 from app.email_sender import (
@@ -34,6 +37,7 @@ from app.result_transfer import (
     build_student_export,
     export_bytes as results_export_bytes,
     export_filename as results_export_filename,
+    export_markdown_bytes as results_export_markdown_bytes,
 )
 
 from app.auth_ui import render_student_register_form
@@ -93,7 +97,7 @@ def approved_students() -> list:
 
 
 def _render_results_download(widget_key: str):
-    """Baixar e/ou enviar por e-mail o arquivo com todos os resultados do aluno."""
+    """Baixar (JSON + Markdown) e/ou enviar por e-mail os resultados do aluno."""
     name = bound_student_name() or st.session_state.get("current_student_name") or ""
     if not name.strip():
         return
@@ -101,26 +105,39 @@ def _render_results_download(widget_key: str):
     payload = build_student_export(name, user.get("email"))
     if not payload["quiz_results"] and not payload["exam_submissions"]:
         return
-    file_bytes = results_export_bytes(payload)
-    filename = results_export_filename(name)
+    json_bytes = results_export_bytes(payload)
+    json_name = results_export_filename(name, ext="json")
+    md_bytes = results_export_markdown_bytes(payload)
+    md_name = results_export_filename(name, ext="md")
 
-    st.download_button(
-        "📥 Baixar arquivo de resultados (enviar ao professor)",
-        data=file_bytes,
-        file_name=filename,
-        mime="application/json",
-        key=widget_key,
-        help=(
-            "Gera um arquivo com todos os seus resultados de quizzes e provas. "
-            "Envie-o ao professor para que ele registre suas notas."
-        ),
-    )
+    st.caption("Baixe os dois formatos e envie ao professor (JSON para importação automática).")
+    dl1, dl2 = st.columns(2)
+    with dl1:
+        st.download_button(
+            "📥 Baixar JSON",
+            data=json_bytes,
+            file_name=json_name,
+            mime="application/json",
+            key=f"{widget_key}_json",
+            use_container_width=True,
+        )
+    with dl2:
+        st.download_button(
+            "📥 Baixar Markdown",
+            data=md_bytes,
+            file_name=md_name,
+            mime="text/markdown",
+            key=f"{widget_key}_md",
+            use_container_width=True,
+        )
     _render_email_to_professor(
         widget_key=f"{widget_key}_email",
         student_name=name,
         student_email=user.get("email"),
-        file_bytes=file_bytes,
-        filename=filename,
+        json_bytes=json_bytes,
+        json_filename=json_name,
+        markdown_bytes=md_bytes,
+        markdown_filename=md_name,
     )
 
 
@@ -129,10 +146,12 @@ def _render_email_to_professor(
     widget_key: str,
     student_name: str,
     student_email: str | None,
-    file_bytes: bytes,
-    filename: str,
+    json_bytes: bytes,
+    json_filename: str,
+    markdown_bytes: bytes,
+    markdown_filename: str,
 ):
-    """E-mail pré-pronto ao professor com o anexo fixo gerado pelo app."""
+    """E-mail pré-pronto ao professor com anexos fixos gerados pelo app."""
     dest = professor_email()
     if not dest:
         return
@@ -141,10 +160,10 @@ def _render_email_to_professor(
         if smtp_configured():
             st.markdown(f"**Para:** `{dest}`")
             st.markdown(f"**Assunto:** [Projeto Quiz] Resultados de {student_name}")
-            st.markdown(f"**📎 Anexo:** `{filename}`")
+            st.markdown(f"**📎 Anexos:** `{json_filename}` e `{markdown_filename}`")
             st.caption(
-                "🔒 O anexo é gerado automaticamente pelo app com os seus resultados. "
-                "Não é possível adicionar outros anexos."
+                "🔒 Os anexos são gerados automaticamente pelo app. "
+                "Não é possível adicionar outros arquivos."
             )
             note = st.text_area(
                 "Mensagem adicional (opcional)",
@@ -162,8 +181,10 @@ def _render_email_to_professor(
                     err = send_results_email(
                         student_name=student_name,
                         student_email=student_email,
-                        file_bytes=file_bytes,
-                        filename=filename,
+                        json_bytes=json_bytes,
+                        json_filename=json_filename,
+                        markdown_bytes=markdown_bytes,
+                        markdown_filename=markdown_filename,
                         extra_note=note or "",
                     )
                 if err:
@@ -174,7 +195,8 @@ def _render_email_to_professor(
         else:
             st.caption(
                 "O envio automático não está ativo. Use o link abaixo para abrir "
-                "seu aplicativo de e-mail já preenchido e **anexe o arquivo baixado acima**."
+                "seu aplicativo de e-mail já preenchido e **anexe os arquivos JSON e Markdown** "
+                "baixados acima."
             )
             st.markdown(
                 f"[✉️ Abrir e-mail pré-pronto para o professor]({mailto_link(student_name, student_email)})"
@@ -465,6 +487,10 @@ def render_student_exam_tab():
         _render_exam_results()
         return
 
+    if st.session_state.exam_mode == "review":
+        _render_exam_review()
+        return
+
     if st.session_state.exam_mode == "take":
         _render_exam_flow()
         return
@@ -499,14 +525,39 @@ def render_student_exam_tab():
                     f"**{summary['total']}** questões · "
                     f"{summary['choice']} múltipla escolha · {summary['justify']} justificativas"
                 )
+                dl = exam_deadline_label(exam)
+                if dl:
+                    if exam_is_past_deadline(exam):
+                        st.warning(f"⏰ Prazo encerrado em **{dl}** — somente revisão.")
+                    else:
+                        st.info(f"⏰ Prazo para envio: **{dl}**")
 
             names = sorted(s["name"] for s in registered)
             student_name = _render_student_identity(names, "exam_student_name")
             st.divider()
-            if st.button("📋 Abrir prova", type="primary", use_container_width=True) and student_name:
+
+            user = st.session_state.get("current_user") or {}
+            existing = (
+                student_submission_for_exam(student_name, picked_id, user.get("email"))
+                if student_name and exam
+                else None
+            )
+            past = exam_is_past_deadline(exam) if exam else False
+            if existing:
+                btn_label = "👁️ Ver prova enviada"
+            elif past:
+                btn_label = "👁️ Revisar prova (somente leitura)"
+            else:
+                btn_label = "📋 Responder prova"
+
+            if st.button(btn_label, type="primary", use_container_width=True) and student_name:
                 st.session_state.current_student_name = student_name
                 st.session_state.preferred_student_name = student_name
-                st.session_state.exam_mode = "take"
+                if past or existing:
+                    st.session_state.exam_submission_result = existing
+                    st.session_state.exam_mode = "review"
+                else:
+                    st.session_state.exam_mode = "take"
                 st.rerun()
             elif not student_name:
                 st.caption("Selecione seu nome para abrir a prova.")
@@ -646,12 +697,92 @@ def _render_quiz_results():
             st.rerun()
 
 
+def _render_exam_questions_readonly(exam: dict, submission: dict | None = None):
+    """Exibe questões sem permitir edição (revisão após o prazo ou prova enviada)."""
+    answers = (submission or {}).get("answers") or []
+    for i, q in enumerate(exam["questions"]):
+        q_view = question_for_student(q)
+        tipo = "Múltipla escolha" if q_view["type"] == "choice" else "Justificativa"
+        ans = answers[i] if i < len(answers) else None
+        with st.container(border=True):
+            st.markdown(f"**Questão {i + 1}** · {tipo}")
+            st.write(q_view["question"])
+            if q_view["type"] == "choice":
+                for j, letter in enumerate("ABCD"):
+                    opt = q_view["options"][j]
+                    marker = ""
+                    if ans and ans.get("selected") == letter:
+                        marker = " ← **sua resposta**"
+                    st.write(f"{letter}) {opt}{marker}")
+            elif ans and ans.get("text"):
+                st.markdown("**Sua resposta:**")
+                st.write(ans["text"])
+            if ans:
+                render_classification_badge(ans.get("classification", "NA"))
+
+
+def _render_exam_review():
+    exam = get_exam(st.session_state.selected_exam_id)
+    if not exam:
+        st.session_state.exam_mode = "select"
+        st.warning("Prova não encontrada ou foi removida.")
+        return
+
+    submission = st.session_state.exam_submission_result
+    if not submission:
+        submission = student_submission_for_exam(
+            st.session_state.current_student_name,
+            exam["id"],
+            (st.session_state.get("current_user") or {}).get("email"),
+        )
+        st.session_state.exam_submission_result = submission
+
+    past = exam_is_past_deadline(exam)
+    dl = exam_deadline_label(exam)
+
+    if submission:
+        _render_exam_results(read_only=True)
+        return
+
+    render_student_hero(
+        exam["title"],
+        "Modo revisão — as respostas não podem ser alteradas.",
+    )
+    if past and dl:
+        st.warning(f"⏰ O prazo de envio encerrou em **{dl}**. Você não enviou esta prova.")
+    else:
+        st.info("Você ainda não enviou esta prova. As questões abaixo são apenas para consulta.")
+
+    _render_exam_questions_readonly(exam)
+    _render_results_download("dl_results_exam_review")
+
+    if st.button("↩️ Voltar às provas", type="primary"):
+        st.session_state.exam_mode = "select"
+        st.session_state.exam_submission_result = None
+        st.rerun()
+
+
 def _render_exam_flow():
     exam = get_exam(st.session_state.selected_exam_id)
     if not exam:
         st.session_state.exam_mode = "select"
         st.warning("Prova não encontrada ou foi removida.")
         return
+
+    if exam_is_past_deadline(exam):
+        st.session_state.exam_mode = "review"
+        st.rerun()
+
+    user = st.session_state.get("current_user") or {}
+    prior = student_submission_for_exam(
+        st.session_state.current_student_name,
+        exam["id"],
+        user.get("email"),
+    )
+    if prior:
+        st.session_state.exam_submission_result = prior
+        st.session_state.exam_mode = "review"
+        st.rerun()
 
     total_q = len(exam["questions"])
     render_flow_header(
@@ -723,16 +854,26 @@ def _render_exam_flow():
         st.rerun()
 
 
-def _render_exam_results():
+def _render_exam_results(*, read_only: bool = False):
     result = st.session_state.exam_submission_result
+    if not result:
+        st.warning("Nenhum envio encontrado para esta prova.")
+        return
     summary = result.get("summary", summarize_answers(result["answers"]))
     counts = summary["counts"]
 
+    title = (
+        f"Prova enviada, {result['student_name']}!"
+        if not read_only
+        else f"Revisão da prova — {result['student_name']}"
+    )
     render_result_banner(
-        f"Prova enviada, {result['student_name']}!",
+        title,
         f"Correção automática: {summary['total_points']:.1f} de {summary['max_points']:.0f} pontos "
         f"({summary['percent']:.0f}%).",
     )
+    if read_only:
+        st.caption("🔒 Modo somente leitura — as respostas não podem ser alteradas.")
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
@@ -744,13 +885,18 @@ def _render_exam_results():
     with c4:
         st.metric("NA — Não acertou", counts["NA"])
 
-    st.subheader("Resultado por questão")
-    for i, ans in enumerate(result["answers"]):
-        clf = ans.get("classification", "NA")
-        tipo = "Múltipla escolha" if ans.get("type") == "choice" else "Justificativa"
-        with st.container(border=True):
-            st.markdown(f"**Questão {i + 1}** · {tipo}")
-            render_classification_badge(clf)
+    exam_for_view = get_exam(result.get("exam_id"))
+    if exam_for_view and read_only:
+        st.subheader("Suas respostas")
+        _render_exam_questions_readonly(exam_for_view, result)
+    else:
+        st.subheader("Resultado por questão")
+        for i, ans in enumerate(result["answers"]):
+            clf = ans.get("classification", "NA")
+            tipo = "Múltipla escolha" if ans.get("type") == "choice" else "Justificativa"
+            with st.container(border=True):
+                st.markdown(f"**Questão {i + 1}** · {tipo}")
+                render_classification_badge(clf)
 
     exam_for_pdf = get_exam(result.get("exam_id"))
     if exam_for_pdf:
@@ -765,7 +911,8 @@ def _render_exam_results():
 
     _render_results_download("dl_results_exam_done")
 
-    if st.button("↩️ Voltar às provas", type="primary"):
+    back_label = "↩️ Voltar às provas"
+    if st.button(back_label, type="primary"):
         st.session_state.exam_mode = "select"
         st.session_state.exam_submission_result = None
         st.rerun()
