@@ -48,4 +48,23 @@ D) alternativa D
   * [ ] D) alternativa D
 ```
 A correta é identificada por `[X]` ou pelo marcador `(Alternativa Correta)`.
+
+**Formato UC2 — Atividade avaliativa (padrão com justificativa):**
+```
+Questão 1
+Enunciado da questão?
+a) alternativa
+b) alternativa
+c) alternativa
+d) alternativa
+Justificativa:
+Texto esperado na correção da justificativa.
+
+GABARITO OFICIAL
+1  B
+2  D
+...
+```
+Cada questão tem múltipla escolha **e** justificativa. A nota principal vem da MC;
+se o aluno errar a MC, a justificativa pode recuperar até metade do ponto.
 """

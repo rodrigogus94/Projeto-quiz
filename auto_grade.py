@@ -13,6 +13,9 @@ LABELS = {
     "NA": "NA — Não acertou",
 }
 
+# Recuperação por justificativa em questões UC2 com MC errada.
+UC2_RECOVERY_POINTS = {"A": 0.5, "PA": 0.25, "NA": 0.0}
+
 
 def _normalize(text: str) -> str:
     text = text.lower().strip()
@@ -83,7 +86,92 @@ def grade_justify_answer(student_text: str, answer_key: str) -> dict:
     }
 
 
+def grade_choice_with_justify(
+    selected: str, correct: str, justify_text: str, answer_key: str
+) -> dict:
+    """Questão composta UC2: MC vale 1 pt; justificativa recupera até 0,5 se MC errada."""
+    mc_clf = classify_choice(selected, correct)
+    justify_clf = classify_justify(justify_text, answer_key)
+    mc_correct = mc_clf == "A"
+    mc_points = 1.0 if mc_correct else 0.0
+    recovery = 0.0 if mc_correct else UC2_RECOVERY_POINTS.get(justify_clf, 0.0)
+
+    return {
+        "type": "choice_with_justify",
+        "selected": selected,
+        "justify_text": justify_text.strip(),
+        "mc_correct": mc_correct,
+        "mc_classification": mc_clf,
+        "justify_classification": justify_clf,
+        "classification": mc_clf if mc_correct else justify_clf,
+        "mc_points": mc_points,
+        "recovery_points": recovery,
+        "points": mc_points + recovery,
+        "reviewed": True,
+        "auto_graded": True,
+    }
+
+
+def apply_answer_classification(ans: dict, classification: str) -> dict:
+    """Atualiza classificação manual do professor e recalcula pontos da resposta."""
+    clf = classification if classification in CLASSIFICATIONS else "NA"
+    updated = {**ans, "classification": clf, "reviewed": True, "auto_graded": False}
+
+    if ans.get("type") == "choice_with_justify":
+        mc_correct = bool(ans.get("mc_correct"))
+        updated["justify_classification"] = clf if not mc_correct else ans.get(
+            "justify_classification", classify_justify(ans.get("justify_text", ""), "")
+        )
+        if mc_correct:
+            updated["mc_points"] = 1.0
+            updated["recovery_points"] = 0.0
+            updated["points"] = 1.0
+        else:
+            updated["recovery_points"] = UC2_RECOVERY_POINTS.get(clf, 0.0)
+            updated["points"] = updated["recovery_points"]
+        return updated
+
+    updated["points"] = POINTS[clf]
+    if ans.get("type") == "choice":
+        updated["correct"] = clf == "A"
+    return updated
+
+
+def _summarize_uc2_exam(answers: list) -> dict:
+    mc_points = sum(float(a.get("mc_points", 0)) for a in answers)
+    recovery_raw = sum(float(a.get("recovery_points", 0)) for a in answers)
+    max_points = float(len(answers))
+    gap = max(0.0, max_points - mc_points)
+    recovery_capped = min(recovery_raw, gap)
+    total_points = mc_points + recovery_capped
+
+    counts = {"A": 0, "PA": 0, "NA": 0}
+    mc_correct_count = 0
+    for a in answers:
+        if a.get("mc_correct"):
+            mc_correct_count += 1
+        jclf = a.get("justify_classification", "NA")
+        if not a.get("mc_correct") and jclf in counts:
+            counts[jclf] += 1
+
+    return {
+        "counts": counts,
+        "mc_correct": mc_correct_count,
+        "mc_points": mc_points,
+        "recovery_points": recovery_capped,
+        "recovery_raw": recovery_raw,
+        "total_points": total_points,
+        "max_points": max_points,
+        "percent": (total_points / max_points * 100) if max_points else 0,
+        "mc_percent": (mc_points / max_points * 100) if max_points else 0,
+        "grading_model": "uc2_recovery",
+    }
+
+
 def summarize_answers(answers: list) -> dict:
+    if any(a.get("type") == "choice_with_justify" for a in answers):
+        return _summarize_uc2_exam(answers)
+
     counts = {"A": 0, "PA": 0, "NA": 0}
     total_points = 0.0
     for ans in answers:

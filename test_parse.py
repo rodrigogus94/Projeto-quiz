@@ -44,6 +44,31 @@ D) O loop é executado apenas uma vez por segurança.
 **Resposta Correta: B**
 """
 
+UC2_EXAM_TEXT = """
+Questão 1
+O que é um algoritmo, segundo os slides?
+a) Um software pronto para uso comercial.
+b) Uma sequência finita de passos lógicos para resolver um problema.
+c) Um tipo de variável em JavaScript.
+d) Um framework CSS como o Bootstrap.
+Justificativa:
+Os slides definem algoritmo como uma sequência finita de passos lógicos e ordenados.
+
+Questão 2
+No JavaScript, qual palavra-chave é utilizada para declarar uma constante?
+a) let
+b) var
+c) constant
+d) const
+Justificativa:
+A palavra-chave const é usada para declarar constantes.
+
+GABARITO OFICIAL
+Questão 	Resposta Correta 	Nota
+1 	B
+2 	D
+"""
+
 EXAM_TEXT = """
 Pergunta 1: Qual é o valor de 2+2?
 Alternativa A: 3
@@ -74,6 +99,50 @@ class TestParseQuestions(unittest.TestCase):
         self.assertEqual(len(q1["options"]), 4)
         self.assertEqual(q1["correct"], "B")
         self.assertNotIn("(CORRETA)", q1["options"][1])
+
+
+class TestParseUC2Exam(unittest.TestCase):
+    def test_uc2_extracts_composite_questions(self):
+        questions = parse_exam_from_text(UC2_EXAM_TEXT)
+        self.assertEqual(len(questions), 2)
+        summary = exam_summary(questions)
+        self.assertEqual(summary["composite"], 2)
+
+    def test_uc2_question_structure(self):
+        q = parse_exam_from_text(UC2_EXAM_TEXT)[0]
+        self.assertEqual(q["type"], "choice_with_justify")
+        self.assertEqual(q["correct"], "B")
+        self.assertEqual(len(q["options"]), 4)
+        self.assertIn("sequência finita", q["answer_key"].lower())
+
+    def test_uc2_gabarito_from_table(self):
+        q2 = parse_exam_from_text(UC2_EXAM_TEXT)[1]
+        self.assertEqual(q2["correct"], "D")
+
+    def test_uc2_with_markdown_headers(self):
+        text = UC2_EXAM_TEXT.replace("Questão ", "### Questão ")
+        questions = parse_exam_from_text(text)
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(questions[0]["type"], "choice_with_justify")
+
+    def test_uc2_with_blockquote_preamble(self):
+        text = (
+            "> Instruções em blockquote\n\n" + UC2_EXAM_TEXT
+        )
+        questions = parse_exam_from_text(text)
+        self.assertEqual(len(questions), 2)
+
+    def test_uc2_empty_does_not_use_markdown_warnings(self):
+        text = (
+            "Questão 1\n"
+            "Só enunciado sem opções\n"
+            "GABARITO OFICIAL\n1  B\n"
+        )
+        warnings = []
+        questions = parse_exam_from_text(text, warnings)
+        self.assertEqual(questions, [])
+        self.assertTrue(any("a-d" in w for w in warnings))
+        self.assertFalse(any("Resposta Correta" in w for w in warnings))
 
 
 class TestParseExam(unittest.TestCase):

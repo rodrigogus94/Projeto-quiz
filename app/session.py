@@ -58,6 +58,7 @@ def init_session_state():
         "preferred_student_name": None,
         "selected_material_id": None,
         "selected_exam_id": None,
+        "current_exam_id": None,
         "exam_mode": "select",
         "exam_submission_result": None,
         "auth_view": "signup",

@@ -98,7 +98,7 @@ def build_exam_lines(
         ans = answers[i] if i < len(answers) else {}
         clf = ans.get("classification", "—")
 
-        if q.get("type") == "choice":
+        if q.get("type") in ("choice", "choice_with_justify"):
             lines.append(f"Pergunta {num}: {q['question']}")
             for j, letter in enumerate("ABCD"):
                 color = CHOICE_COLORS[j]
@@ -107,7 +107,18 @@ def build_exam_lines(
                 if ans.get("selected") == letter:
                     suffix = " ← RESPOSTA DO ALUNO"
                 lines.append(f"Alternativa {letter} ({color}): {opt}{suffix}")
-            lines.append(f"Classificação: {clf}")
+            if q.get("type") == "choice_with_justify":
+                lines.append(
+                    f"Justificativa do aluno: {ans.get('justify_text', '').strip() or '(sem resposta)'}"
+                )
+                mc_ok = "Correta" if ans.get("mc_correct") else "Incorreta"
+                lines.append(f"MC: {mc_ok} | Pontos: {ans.get('points', 0):.1f}")
+                if not ans.get("mc_correct"):
+                    lines.append(
+                        f"Classificação da justificativa: {ans.get('justify_classification', clf)}"
+                    )
+            else:
+                lines.append(f"Classificação: {clf}")
         else:
             lines.append(f"Pergunta {num}: {q['question']} (JUSTIFICATIVA)")
             lines.append(f"Resposta do aluno: {ans.get('text', '').strip() or '(sem resposta)'}")
@@ -156,7 +167,7 @@ def build_exam_pdf_bytes(
         ans = answers[i] if i < len(answers) else {}
         clf = ans.get("classification", "—")
 
-        if q.get("type") == "choice":
+        if q.get("type") in ("choice", "choice_with_justify"):
             _write_line(pdf, font, "B", 11, f"Pergunta {num}: {q['question']}")
             for j, letter in enumerate("ABCD"):
                 color = CHOICE_COLORS[j]
@@ -165,6 +176,20 @@ def build_exam_pdf_bytes(
                 if ans.get("selected") == letter:
                     line += "  ← RESPOSTA DO ALUNO"
                 _write_line(pdf, font, "", 10, line, h=5)
+            if q.get("type") == "choice_with_justify":
+                _write_line(pdf, font, "", 10, "Justificativa do aluno:")
+                _write_line(
+                    pdf,
+                    font,
+                    "",
+                    10,
+                    ans.get("justify_text", "").strip() or "(sem resposta)",
+                    h=5,
+                )
+                if include_gabarito and q.get("answer_key"):
+                    _write_line(
+                        pdf, font, "B", 10, f"Gabarito justificativa: {q['answer_key']}", h=5
+                    )
         else:
             _write_line(
                 pdf, font, "B", 11, f"Pergunta {num}: {q['question']} (JUSTIFICATIVA)"
@@ -176,7 +201,19 @@ def build_exam_pdf_bytes(
             if include_gabarito and q.get("answer_key"):
                 _write_line(pdf, font, "B", 10, f"Gabarito: {q['answer_key']}", h=5)
 
-        _write_line(pdf, font, "B", 10, f"Classificação: {clf}", h=5)
+        if q.get("type") == "choice_with_justify":
+            mc_ok = "Correta" if ans.get("mc_correct") else "Incorreta"
+            _write_line(
+                pdf,
+                font,
+                "B",
+                10,
+                f"MC: {mc_ok} | Justificativa: {ans.get('justify_classification', clf)} | "
+                f"Pontos: {ans.get('points', 0):.1f}",
+                h=5,
+            )
+        else:
+            _write_line(pdf, font, "B", 10, f"Classificação: {clf}", h=5)
         pdf.ln(3)
 
     raw = pdf.output()

@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from datetime import time
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
 import auth_users
-from auto_grade import CLASSIFICATIONS, LABELS, POINTS, summarize_answers
+from auto_grade import (
+    CLASSIFICATIONS,
+    LABELS,
+    apply_answer_classification,
+    summarize_answers,
+)
 from pdf_export import build_exam_pdf_bytes, export_filename
 from pdf_parser import exam_summary
 from quiz_storage import (
@@ -207,12 +213,19 @@ def _render_orphan_results_cleanup(students: list):
 
 def render_exam_question_preview(questions: list, show_gabarito: bool = True):
     for i, q in enumerate(questions):
-        tipo = "Múltipla escolha" if q.get("type") == "choice" else "Justificativa"
+        if q.get("type") == "choice_with_justify":
+            tipo = "MC + justificativa"
+        elif q.get("type") == "choice":
+            tipo = "Múltipla escolha"
+        else:
+            tipo = "Justificativa"
         st.markdown(f"**{i + 1}. [{tipo}]** {q['question']}")
-        if q.get("type") == "choice":
+        if q.get("type") in ("choice", "choice_with_justify"):
             for j, letter in enumerate("ABCD"):
                 mark = " ✅" if show_gabarito and q.get("correct") == letter else ""
                 st.write(f"&nbsp;&nbsp;{letter}) {q['options'][j]}{mark}", unsafe_allow_html=True)
+            if show_gabarito and q.get("type") == "choice_with_justify" and q.get("answer_key"):
+                st.caption(f"Justificativa esperada: {q['answer_key']}")
         elif show_gabarito:
             st.caption(f"Gabarito: {q.get('answer_key') or '(não informado)'}")
 
@@ -222,6 +235,16 @@ def render_exams_tab():
     st.caption("O gabarito fica só com o professor. Os alunos veem apenas as questões.")
     with st.expander("📋 Formato esperado do arquivo"):
         st.markdown(EXAM_FORMAT_HELP)
+
+    _template = Path(__file__).resolve().parent.parent / "templates" / "atividade_uc2_modelo.md"
+    if _template.is_file():
+        st.download_button(
+            "📥 Baixar modelo UC2 (20 questões em branco)",
+            data=_template.read_bytes(),
+            file_name="atividade_uc2_modelo.md",
+            mime="text/markdown",
+            help="Preencha no Word ou editor de texto, exporte para PDF e importe acima.",
+        )
 
     exams = list_exams()
     active_ids = set(get_active_exam_ids())
@@ -259,6 +282,12 @@ def render_exams_tab():
             st.rerun()
         else:
             st.error("Nenhuma questão identificada. Verifique o formato do arquivo.")
+            st.info(
+                "Para o formato UC2: cada questão precisa de enunciado, 4 alternativas "
+                "(`a)` a `d)`), bloco `Justificativa:` e tabela **GABARITO OFICIAL** no final "
+                "(ex.: `1  B`). Use o botão **Baixar modelo UC2** acima. "
+                "Se o arquivo está correto, reinicie o app (`Ctrl+C` e `python -m streamlit run main.py`)."
+            )
 
     if not exams:
         st.info("Nenhuma prova cadastrada. Importe um PDF ou Markdown acima.")
@@ -371,47 +400,75 @@ def render_exams_tab():
     for sub in submissions:
         summary = sub.get("summary") or summarize_answers(sub["answers"])
         c = summary["counts"]
-        label = (
-            f"{sub['student_name']} — "
-            f"A:{c['A']} | PA:{c['PA']} | NA:{c['NA']} — "
-            f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
-        )
+        if summary.get("grading_model") == "uc2_recovery":
+            label = (
+                f"{sub['student_name']} — MC:{summary.get('mc_correct', 0)}/"
+                f"{int(summary['max_points'])} · +{summary.get('recovery_points', 0):.1f} rec — "
+                f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
+            )
+        else:
+            label = (
+                f"{sub['student_name']} — "
+                f"A:{c['A']} | PA:{c['PA']} | NA:{c['NA']} — "
+                f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
+            )
         with st.expander(label):
             if not corr_exam:
                 continue
             new_answers = []
             for i, (ans, q_full) in enumerate(zip(sub["answers"], corr_exam["questions"])):
-                tipo = "MC" if ans.get("type") == "choice" else "Justificativa"
-                st.markdown(f"**{i + 1}. [{tipo}]** {q_full['question']}")
-                if ans.get("type") == "choice":
-                    st.write(f"Resposta: **{ans.get('selected', '—')}**")
+                if ans.get("type") == "choice_with_justify":
+                    tipo = "MC + justificativa"
+                elif ans.get("type") == "choice":
+                    tipo = "MC"
                 else:
+                    tipo = "Justificativa"
+                st.markdown(f"**{i + 1}. [{tipo}]** {q_full['question']}")
+                if ans.get("type") in ("choice", "choice_with_justify"):
+                    mc_mark = "✅" if ans.get("mc_correct") else "❌"
+                    st.write(
+                        f"Alternativa: **{ans.get('selected', '—')}** {mc_mark} "
+                        f"(gabarito: {q_full.get('correct', '—')})"
+                    )
+                if ans.get("type") == "choice_with_justify":
+                    st.write(f"Justificativa do aluno: {ans.get('justify_text', '')}")
+                    if q_full.get("answer_key"):
+                        st.caption(f"Gabarito da justificativa: {q_full['answer_key']}")
+                    current = ans.get("justify_classification", "NA")
+                    if ans.get("mc_correct"):
+                        st.success("MC correta — justificativa não altera a nota.")
+                        new_answers.append(ans)
+                        continue
+                elif ans.get("type") == "justify":
                     st.write(f"Resposta do aluno: {ans.get('text', '')}")
                     if q_full.get("answer_key"):
                         st.caption(f"Gabarito: {q_full['answer_key']}")
-                current = ans.get("classification", "NA")
+                    current = ans.get("classification", "NA")
+                else:
+                    current = ans.get("classification", "NA")
+
                 if current not in CLASSIFICATIONS:
                     current = "NA"
                 render_classification_badge(current)
                 if ans.get("auto_graded"):
                     st.caption("Classificação automática")
-                new_clf = st.selectbox(
-                    "Ajustar classificação",
-                    options=list(CLASSIFICATIONS),
-                    index=list(CLASSIFICATIONS).index(current),
-                    format_func=lambda x: LABELS[x],
-                    key=f"clf_{sub['id']}_{i}",
-                )
-                updated = {
-                    **ans,
-                    "classification": new_clf,
-                    "points": POINTS[new_clf],
-                    "reviewed": True,
-                    "auto_graded": ans.get("auto_graded", False) and new_clf == current,
-                }
-                if new_clf != current:
-                    updated["auto_graded"] = False
-                new_answers.append(updated)
+                if ans.get("type") != "choice_with_justify" or not ans.get("mc_correct"):
+                    label_adj = (
+                        "Ajustar justificativa"
+                        if ans.get("type") == "choice_with_justify"
+                        else "Ajustar classificação"
+                    )
+                    new_clf = st.selectbox(
+                        label_adj,
+                        options=list(CLASSIFICATIONS),
+                        index=list(CLASSIFICATIONS).index(current),
+                        format_func=lambda x: LABELS[x],
+                        key=f"clf_{sub['id']}_{i}",
+                    )
+                    updated = apply_answer_classification(ans, new_clf)
+                    if new_clf != current:
+                        updated["auto_graded"] = False
+                    new_answers.append(updated)
             if st.button("💾 Salvar revisão", key=f"save_corr_{sub['id']}"):
                 sub_summary = summarize_answers(new_answers)
                 update_exam_submission(sub["id"], new_answers, sub_summary)

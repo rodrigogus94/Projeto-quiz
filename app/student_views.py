@@ -8,6 +8,7 @@ import streamlit as st
 import auth_users
 from auto_grade import (
     grade_choice_answer,
+    grade_choice_with_justify,
     grade_justify_answer,
     summarize_answers,
 )
@@ -94,6 +95,24 @@ def _render_student_identity(names: list[str], picker_key: str) -> str:
 
 def approved_students() -> list:
     return [s for s in load_students() if auth_users.is_approved_student_name(s["name"])]
+
+
+def _active_exam_id() -> str | None:
+    """ID da prova em andamento — não depende do selectbox (que some no modo take)."""
+    return st.session_state.get("current_exam_id") or st.session_state.get("selected_exam_id")
+
+
+def _start_exam_session(exam_id: str, *, mode: str, submission: dict | None = None):
+    st.session_state.current_exam_id = exam_id
+    st.session_state.selected_exam_id = exam_id
+    st.session_state.exam_submission_result = submission
+    st.session_state.exam_mode = mode
+
+
+def _clear_exam_session():
+    st.session_state.exam_mode = "select"
+    st.session_state.current_exam_id = None
+    st.session_state.exam_submission_result = None
 
 
 def _render_results_download(widget_key: str):
@@ -554,10 +573,9 @@ def render_student_exam_tab():
                 st.session_state.current_student_name = student_name
                 st.session_state.preferred_student_name = student_name
                 if past or existing:
-                    st.session_state.exam_submission_result = existing
-                    st.session_state.exam_mode = "review"
+                    _start_exam_session(picked_id, mode="review", submission=existing)
                 else:
-                    st.session_state.exam_mode = "take"
+                    _start_exam_session(picked_id, mode="take")
                 st.rerun()
             elif not student_name:
                 st.caption("Selecione seu nome para abrir a prova.")
@@ -702,29 +720,43 @@ def _render_exam_questions_readonly(exam: dict, submission: dict | None = None):
     answers = (submission or {}).get("answers") or []
     for i, q in enumerate(exam["questions"]):
         q_view = question_for_student(q)
-        tipo = "Múltipla escolha" if q_view["type"] == "choice" else "Justificativa"
+        if q_view["type"] == "choice_with_justify":
+            tipo = "Múltipla escolha + justificativa"
+        elif q_view["type"] == "choice":
+            tipo = "Múltipla escolha"
+        else:
+            tipo = "Justificativa"
         ans = answers[i] if i < len(answers) else None
         with st.container(border=True):
             st.markdown(f"**Questão {i + 1}** · {tipo}")
             st.write(q_view["question"])
-            if q_view["type"] == "choice":
+            if q_view["type"] in ("choice", "choice_with_justify"):
                 for j, letter in enumerate("ABCD"):
                     opt = q_view["options"][j]
                     marker = ""
                     if ans and ans.get("selected") == letter:
                         marker = " ← **sua resposta**"
                     st.write(f"{letter}) {opt}{marker}")
-            elif ans and ans.get("text"):
+            if q_view["type"] == "choice_with_justify" and ans and ans.get("justify_text"):
+                st.markdown("**Sua justificativa:**")
+                st.write(ans["justify_text"])
+            elif q_view["type"] == "justify" and ans and ans.get("text"):
                 st.markdown("**Sua resposta:**")
                 st.write(ans["text"])
             if ans:
-                render_classification_badge(ans.get("classification", "NA"))
+                if ans.get("type") == "choice_with_justify":
+                    mc_ok = "✅ MC correta" if ans.get("mc_correct") else "❌ MC incorreta"
+                    st.caption(mc_ok)
+                    if not ans.get("mc_correct"):
+                        render_classification_badge(ans.get("justify_classification", "NA"))
+                else:
+                    render_classification_badge(ans.get("classification", "NA"))
 
 
 def _render_exam_review():
-    exam = get_exam(st.session_state.selected_exam_id)
+    exam = get_exam(_active_exam_id())
     if not exam:
-        st.session_state.exam_mode = "select"
+        _clear_exam_session()
         st.warning("Prova não encontrada ou foi removida.")
         return
 
@@ -757,15 +789,14 @@ def _render_exam_review():
     _render_results_download("dl_results_exam_review")
 
     if st.button("↩️ Voltar às provas", type="primary"):
-        st.session_state.exam_mode = "select"
-        st.session_state.exam_submission_result = None
+        _clear_exam_session()
         st.rerun()
 
 
 def _render_exam_flow():
-    exam = get_exam(st.session_state.selected_exam_id)
+    exam = get_exam(_active_exam_id())
     if not exam:
-        st.session_state.exam_mode = "select"
+        _clear_exam_session()
         st.warning("Prova não encontrada ou foi removida.")
         return
 
@@ -791,29 +822,50 @@ def _render_exam_flow():
         total=total_q,
         student_name=st.session_state.current_student_name,
     )
-    st.caption("Responda todas as questões e envie ao final. O gabarito não é exibido.")
+    has_composite = any(q.get("type") == "choice_with_justify" for q in exam["questions"])
+    if has_composite:
+        st.caption(
+            "Marque a alternativa e justifique. A nota principal vem da múltipla escolha; "
+            "se errar, uma boa justificativa pode recuperar até metade do ponto da questão."
+        )
+    else:
+        st.caption("Responda todas as questões e envie ao final. O gabarito não é exibido.")
 
     with st.form("exam_submit_form"):
         answers_input = []
         for i, q in enumerate(exam["questions"]):
             q_view = question_for_student(q)
-            tipo = "Múltipla escolha" if q_view["type"] == "choice" else "Justificativa"
+            if q_view["type"] == "choice_with_justify":
+                tipo = "Múltipla escolha + justificativa"
+            elif q_view["type"] == "choice":
+                tipo = "Múltipla escolha"
+            else:
+                tipo = "Justificativa"
             with st.container(border=True):
                 st.markdown(
                     f'<div class="kahoot-exam-q"><strong>Questão {i + 1}</strong> · {tipo}</div>',
                     unsafe_allow_html=True,
                 )
                 st.write(q_view["question"])
-                if q_view["type"] == "choice":
+                if q_view["type"] in ("choice", "choice_with_justify"):
                     opts = {letter: q_view["options"][j] for j, letter in enumerate("ABCD")}
                     picked = st.radio(
                         "Alternativa",
                         options=list(opts.keys()),
                         format_func=lambda x: f"{x}) {opts[x]}",
-                        key=f"exam_q_{i}",
+                        key=f"exam_q_{i}_mc",
                         label_visibility="collapsed",
                     )
-                    answers_input.append(("choice", picked))
+                    if q_view["type"] == "choice_with_justify":
+                        justify = st.text_area(
+                            "Justifique sua resposta",
+                            key=f"exam_q_{i}_justify",
+                            height=100,
+                            placeholder="Explique o conceito por trás da alternativa escolhida…",
+                        )
+                        answers_input.append(("choice_with_justify", picked, justify))
+                    else:
+                        answers_input.append(("choice", picked))
                 else:
                     text = st.text_area(
                         "Sua resposta (justifique)",
@@ -825,12 +877,22 @@ def _render_exam_flow():
 
         if st.form_submit_button("📤 Enviar prova", type="primary", use_container_width=True):
             graded = []
-            for (kind, value), q_full in zip(answers_input, exam["questions"]):
+            for item, q_full in zip(answers_input, exam["questions"]):
+                kind = item[0]
                 if kind == "choice":
-                    graded.append(grade_choice_answer(value, q_full["correct"]))
+                    graded.append(grade_choice_answer(item[1], q_full["correct"]))
+                elif kind == "choice_with_justify":
+                    graded.append(
+                        grade_choice_with_justify(
+                            item[1],
+                            q_full["correct"],
+                            item[2],
+                            q_full.get("answer_key", ""),
+                        )
+                    )
                 else:
                     graded.append(
-                        grade_justify_answer(value, q_full.get("answer_key", ""))
+                        grade_justify_answer(item[1], q_full.get("answer_key", ""))
                     )
 
             summary = summarize_answers(graded)
@@ -846,11 +908,12 @@ def _render_exam_flow():
             }
             add_exam_submission(submission)
             st.session_state.exam_submission_result = submission
+            st.session_state.current_exam_id = exam["id"]
             st.session_state.exam_mode = "done"
             st.rerun()
 
     if st.button("Cancelar prova", type="secondary"):
-        st.session_state.exam_mode = "select"
+        _clear_exam_session()
         st.rerun()
 
 
@@ -861,29 +924,50 @@ def _render_exam_results(*, read_only: bool = False):
         return
     summary = result.get("summary", summarize_answers(result["answers"]))
     counts = summary["counts"]
+    is_uc2 = summary.get("grading_model") == "uc2_recovery"
 
     title = (
         f"Prova enviada, {result['student_name']}!"
         if not read_only
         else f"Revisão da prova — {result['student_name']}"
     )
-    render_result_banner(
-        title,
-        f"Correção automática: {summary['total_points']:.1f} de {summary['max_points']:.0f} pontos "
-        f"({summary['percent']:.0f}%).",
-    )
+    if is_uc2:
+        msg = (
+            f"MC: {summary.get('mc_correct', 0)}/{int(summary['max_points'])} acertos "
+            f"({summary.get('mc_percent', 0):.0f}%) · "
+            f"Recuperação: +{summary.get('recovery_points', 0):.1f} · "
+            f"Nota final: {summary['total_points']:.1f}/{summary['max_points']:.0f} "
+            f"({summary['percent']:.0f}%)"
+        )
+    else:
+        msg = (
+            f"Correção automática: {summary['total_points']:.1f} de "
+            f"{summary['max_points']:.0f} pontos ({summary['percent']:.0f}%)."
+        )
+    render_result_banner(title, msg)
     if read_only:
         st.caption("🔒 Modo somente leitura — as respostas não podem ser alteradas.")
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.metric("Pontuação", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
-    with c2:
-        st.metric("A — Acertou", counts["A"])
-    with c3:
-        st.metric("PA — Parcial", counts["PA"])
-    with c4:
-        st.metric("NA — Não acertou", counts["NA"])
+    if is_uc2:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Nota final", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
+        with c2:
+            st.metric("Acertos MC", summary.get("mc_correct", 0))
+        with c3:
+            st.metric("Recuperação", f"+{summary.get('recovery_points', 0):.1f}")
+        with c4:
+            st.metric("Justif. A / PA / NA", f"{counts['A']}/{counts['PA']}/{counts['NA']}")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.metric("Pontuação", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
+        with c2:
+            st.metric("A — Acertou", counts["A"])
+        with c3:
+            st.metric("PA — Parcial", counts["PA"])
+        with c4:
+            st.metric("NA — Não acertou", counts["NA"])
 
     exam_for_view = get_exam(result.get("exam_id"))
     if exam_for_view and read_only:
@@ -892,11 +976,20 @@ def _render_exam_results(*, read_only: bool = False):
     else:
         st.subheader("Resultado por questão")
         for i, ans in enumerate(result["answers"]):
-            clf = ans.get("classification", "NA")
-            tipo = "Múltipla escolha" if ans.get("type") == "choice" else "Justificativa"
-            with st.container(border=True):
-                st.markdown(f"**Questão {i + 1}** · {tipo}")
-                render_classification_badge(clf)
+            if ans.get("type") == "choice_with_justify":
+                mc_txt = "✅ MC" if ans.get("mc_correct") else "❌ MC"
+                pts = ans.get("points", 0)
+                with st.container(border=True):
+                    st.markdown(f"**Questão {i + 1}** · Múltipla escolha + justificativa")
+                    st.caption(f"{mc_txt} · {pts:.1f} pt nesta questão")
+                    if not ans.get("mc_correct"):
+                        render_classification_badge(ans.get("justify_classification", "NA"))
+            else:
+                clf = ans.get("classification", "NA")
+                tipo = "Múltipla escolha" if ans.get("type") == "choice" else "Justificativa"
+                with st.container(border=True):
+                    st.markdown(f"**Questão {i + 1}** · {tipo}")
+                    render_classification_badge(clf)
 
     exam_for_pdf = get_exam(result.get("exam_id"))
     if exam_for_pdf:
@@ -909,10 +1002,15 @@ def _render_exam_results(*, read_only: bool = False):
             use_container_width=True,
         )
 
+    st.divider()
+    st.markdown("#### 📤 Enviar resultados ao professor")
+    st.caption(
+        "Baixe os arquivos JSON e Markdown ou envie por e-mail com os resultados "
+        "desta prova e dos quizzes concluídos."
+    )
     _render_results_download("dl_results_exam_done")
 
     back_label = "↩️ Voltar às provas"
     if st.button(back_label, type="primary"):
-        st.session_state.exam_mode = "select"
-        st.session_state.exam_submission_result = None
+        _clear_exam_session()
         st.rerun()

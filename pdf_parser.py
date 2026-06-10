@@ -36,6 +36,20 @@ KAHOOT_OPTION = re.compile(
 )
 ALT_CORRETA_MARK = re.compile(r"\(\s*Alternativa\s+Correta\s*\)", re.IGNORECASE)
 
+# Formato UC2 (Atividade avaliativa): Questão N, a) b) c) d), Justificativa:,
+# gabarito em tabela GABARITO OFICIAL no final do arquivo.
+UC2_QUESTAO_HEADER = re.compile(
+    r"^#{0,6}\s*Quest[aã]o\s+(\d+)\s*:?\s*$", re.MULTILINE | re.IGNORECASE
+)
+UC2_OPTION_LINE = re.compile(
+    r"^(?:[*\-●○•]\s*)?([A-Da-d])\)\s*(.*)$", re.IGNORECASE
+)
+UC2_JUSTIFICATIVA_LINE = re.compile(r"^Justificativa\s*:\s*(.*)$", re.IGNORECASE)
+UC2_GABARITO_SECTION = re.compile(r"GABARITO(?:\s+OFICIAL)?", re.IGNORECASE)
+UC2_GABARITO_ROW = re.compile(
+    r"(?:^|\n)\s*(\d{1,2})\s+([A-Da-d])\b"
+)
+
 
 def _warn(warnings: list | None, msg: str):
     if warnings is not None:
@@ -298,17 +312,113 @@ def _is_justify_block(block: str, header_end: int) -> bool:
     return False
 
 
+def _parse_uc2_gabarito_table(full_text: str) -> dict[str, str]:
+    """Extrai letras corretas da tabela de gabarito ({num: letra})."""
+    answers: dict[str, str] = {}
+    section = UC2_GABARITO_SECTION.search(full_text)
+    tail = full_text[section.end() :] if section else full_text[-2500:]
+    for num, letter in UC2_GABARITO_ROW.findall(tail):
+        answers[num] = letter.upper()
+    return answers
+
+
+def _parse_uc2_question_block(block: str, correct_letter: str | None) -> dict | None:
+    """Bloco de uma questão UC2: enunciado + 4 opções + texto de justificativa."""
+    question_lines: list[str] = []
+    options: list[str | None] = [None, None, None, None]
+    justify_parts: list[str] = []
+    mode = "question"
+
+    for raw in block.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("--") or line.startswith(">"):
+            continue
+        if line.startswith("#"):
+            continue
+
+        opt_match = UC2_OPTION_LINE.match(line)
+        if opt_match:
+            idx = ord(opt_match.group(1).lower()) - ord("a")
+            options[idx] = _clean_text(opt_match.group(2))
+            mode = "options"
+            continue
+
+        just_match = UC2_JUSTIFICATIVA_LINE.match(line)
+        if just_match:
+            mode = "justify"
+            rest = just_match.group(1).strip()
+            if rest:
+                justify_parts.append(rest)
+            continue
+
+        if mode == "question":
+            question_lines.append(line)
+        elif mode == "justify":
+            justify_parts.append(line)
+
+    opts = [o for o in options if o is not None]
+    question = _clean_text(" ".join(question_lines))
+    if len(options) != 4 or any(o is None or not o for o in options) or not question:
+        return None
+    if not correct_letter or correct_letter.upper() not in "ABCD":
+        return None
+
+    return {
+        "type": "choice_with_justify",
+        "question": question,
+        "options": [options[0], options[1], options[2], options[3]],
+        "correct": correct_letter.upper(),
+        "answer_key": _clean_text(" ".join(justify_parts)),
+    }
+
+
+def _parse_uc2_exam_questions(full_text: str, warnings: list | None = None) -> list:
+    matches = list(UC2_QUESTAO_HEADER.finditer(full_text))
+    if not matches:
+        return []
+
+    gabarito = _parse_uc2_gabarito_table(full_text)
+    questions = []
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.end() : block_end]
+        if UC2_GABARITO_SECTION.search(block):
+            block = UC2_GABARITO_SECTION.split(block, maxsplit=1)[0]
+
+        parsed = _parse_uc2_question_block(block, gabarito.get(num))
+        if parsed:
+            questions.append(parsed)
+        else:
+            _warn(
+                warnings,
+                f"Questão {num} ignorada: enunciado, 4 opções (a-d), justificativa "
+                "ou gabarito oficial incompletos.",
+            )
+    return questions
+
+
 def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
     """
     Extrai questões de prova com gabarito.
-    Tipos: choice (múltipla escolha) e justify (dissertativa/justificativa).
+    Tipos: choice, justify e choice_with_justify (formato UC2).
     """
+    # Formato UC2 (Atividade avaliativa) tem prioridade quando detectado.
+    if UC2_QUESTAO_HEADER.search(full_text) or "Justificativa:" in full_text:
+        uc2 = _parse_uc2_exam_questions(full_text, warnings)
+        if uc2 or UC2_QUESTAO_HEADER.search(full_text):
+            # Não cair no parser Markdown (evita mensagens enganosas de "Resposta Correta").
+            return uc2
+
     matches = list(PERGUNTA_HEADER.finditer(full_text))
     if not matches:
         kahoot = _parse_kahoot_questions(full_text, warnings)
         if kahoot:
             return [{"type": "choice", **q} for q in kahoot]
-        return _parse_markdown_exam_questions(full_text, warnings)
+        md = _parse_markdown_exam_questions(full_text, warnings)
+        if md:
+            return md
+        return _parse_uc2_exam_questions(full_text, warnings)
 
     questions = []
 
@@ -375,6 +485,12 @@ def parse_questions_from_text(full_text: str, warnings: list | None = None) -> l
 
 def question_for_student(q: dict) -> dict:
     """Remove gabarito — visão do aluno."""
+    if q.get("type") == "choice_with_justify":
+        return {
+            "type": "choice_with_justify",
+            "question": q["question"],
+            "options": q["options"],
+        }
     if q.get("type") == "justify" or "options" not in q:
         return {"type": "justify", "question": q["question"]}
     return {
@@ -387,4 +503,10 @@ def question_for_student(q: dict) -> dict:
 def exam_summary(questions: list) -> dict:
     choice = sum(1 for q in questions if q.get("type") == "choice")
     justify = sum(1 for q in questions if q.get("type") == "justify")
-    return {"total": len(questions), "choice": choice, "justify": justify}
+    composite = sum(1 for q in questions if q.get("type") == "choice_with_justify")
+    return {
+        "total": len(questions),
+        "choice": choice + composite,
+        "justify": justify + composite,
+        "composite": composite,
+    }
