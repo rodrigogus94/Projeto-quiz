@@ -4,8 +4,6 @@ import streamlit as st
 
 import auth_users
 
-from app.auth_ui import render_student_register_form
-
 
 def _professor_nav_sections(show_admin_tab: bool) -> list[tuple[str, str]]:
     sections = [
@@ -54,13 +52,3 @@ def render_student_sidebar_nav():
         label_visibility="collapsed",
     )
     st.sidebar.divider()
-    _render_student_register_sidebar()
-
-
-def _render_student_register_sidebar():
-    from app.student_views import approved_students
-
-    registered = approved_students()
-    with st.sidebar.expander("📝 Cadastrar-me", expanded=not registered):
-        if render_student_register_form("register_in_sidebar"):
-            st.rerun()
