@@ -305,25 +305,11 @@ def _render_my_exam_history():
         return
     for s in reversed(mine):
         exam = get_exam(s.get("exam_id") or "")
-        summary = s.get("summary") or {}
-        counts = summary.get("counts", {})
-        pct = summary.get("percent")
-        tone = (
-            "neutral"
-            if pct is None
-            else ("good" if pct >= 70 else ("mid" if pct >= 40 else "bad"))
-        )
-        badge = f"{pct:.0f}%" if pct is not None else "Enviada"
         render_history_item(
             title=exam["title"] if exam else "(prova removida)",
-            meta=(
-                f"✅ {counts.get('A', 0)} acertos · "
-                f"🟡 {counts.get('PA', 0)} parciais · "
-                f"🔴 {counts.get('NA', 0)} erradas · "
-                f"🕑 {_format_when(s.get('submitted_at'))} (UTC)"
-            ),
-            badge_text=badge,
-            badge_tone=tone,
+            meta=f"🕑 {_format_when(s.get('submitted_at'))} (UTC)",
+            badge_text="Enviada",
+            badge_tone="neutral",
         )
 
 
@@ -915,25 +901,21 @@ def _render_exam_results(*, read_only: bool = False):
     if not result:
         st.warning("Nenhum envio encontrado para esta prova.")
         return
-    summary = result.get("summary", summarize_answers(result["answers"]))
 
     title = (
         f"Prova enviada, {result['student_name']}!"
         if not read_only
-        else f"Revisão da prova — {result['student_name']}"
+        else f"Prova enviada — {result['student_name']}"
     )
     msg = (
-        f"Nota final: {summary['total_points']:.1f}/{summary['max_points']:.0f} "
-        f"({summary['percent']:.0f}%)"
+        "Suas respostas foram registradas. A correção ficará disponível apenas para o professor."
+        if not read_only
+        else "Modo somente leitura — você pode consultar o que enviou, sem alterar as respostas."
     )
     render_result_banner(title, msg)
-    if read_only:
-        st.caption("🔒 Modo somente leitura — as respostas não podem ser alteradas.")
-
-    st.metric("Nota final", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
 
     exam_for_view = get_exam(result.get("exam_id"))
-    if exam_for_view and read_only:
+    if exam_for_view:
         st.subheader("Suas respostas")
         _render_exam_questions_readonly(exam_for_view, result)
 
