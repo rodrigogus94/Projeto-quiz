@@ -119,6 +119,42 @@ def _quiz_dedupe_key(entry: dict) -> tuple:
     )
 
 
+def preview_import(payload: dict, target_name: str) -> dict:
+    """Verifica, antes de importar, o que é novo e o que já está no sistema."""
+    name_key = _norm(target_name)
+
+    existing_quiz = {_quiz_dedupe_key(e) for e in load_leaderboard()}
+    quiz_new = quiz_existing = 0
+    for raw in payload.get("quiz_results", []):
+        key = (
+            raw.get("material_id"),
+            name_key,
+            raw.get("score"),
+            raw.get("total"),
+            raw.get("submitted_at"),
+        )
+        if key in existing_quiz:
+            quiz_existing += 1
+        else:
+            quiz_new += 1
+
+    existing_sub_ids = {s.get("id") for s in load_exam_submissions()}
+    exam_new = exam_existing = 0
+    for raw in payload.get("exam_submissions", []):
+        if raw.get("id") in existing_sub_ids:
+            exam_existing += 1
+        else:
+            exam_new += 1
+
+    return {
+        "quiz_new": quiz_new,
+        "quiz_existing": quiz_existing,
+        "exam_new": exam_new,
+        "exam_existing": exam_existing,
+        "has_new": (quiz_new + exam_new) > 0,
+    }
+
+
 def import_results(payload: dict, target_name: str, target_email: str | None) -> dict:
     """Adiciona os resultados do arquivo ao aluno confirmado pelo professor.
 

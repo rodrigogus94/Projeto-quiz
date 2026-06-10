@@ -36,7 +36,7 @@ from quiz_storage import (
     update_student,
 )
 
-from app.result_transfer import import_results, parse_student_export
+from app.result_transfer import import_results, parse_student_export, preview_import
 
 from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
 from app.charts import (
@@ -379,11 +379,12 @@ def render_exams_tab():
 
 def _render_import_results_section():
     """Importa o arquivo de resultados gerado pelo aluno, com confirmação."""
-    with st.expander("📂 Importar arquivo de resultados de aluno"):
-        flash = st.session_state.pop("import_results_flash", None)
-        if flash:
-            st.success(flash)
+    flash = st.session_state.pop("import_results_flash", None)
+    if flash:
+        st.success(flash)
+        st.toast("✅ Resultados importados com sucesso!")
 
+    with st.expander("📂 Importar arquivo de resultados de aluno", expanded=bool(flash)):
         st.caption(
             "O aluno gera o arquivo na área dele (botão **Baixar arquivo de resultados**) "
             "e envia para você. Ao importar, os resultados são adicionados ao aluno "
@@ -479,6 +480,27 @@ def _render_import_results_section():
                 f"Atenção: o arquivo foi gerado por **{detected_name}**, "
                 f"mas será atribuído a **{target}**."
             )
+
+        check = preview_import(payload, target)
+        if not check["has_new"]:
+            st.error(
+                "🚫 Importação bloqueada: todos os resultados deste arquivo "
+                f"já estão registrados no sistema para **{target}** "
+                f"({check['quiz_existing']} quiz(zes) e {check['exam_existing']} prova(s))."
+            )
+            return
+
+        parts = []
+        if check["quiz_new"]:
+            parts.append(f"{check['quiz_new']} resultado(s) de quiz")
+        if check["exam_new"]:
+            parts.append(f"{check['exam_new']} prova(s)")
+        msg = f"Serão importados: {' e '.join(parts)}."
+        existing_total = check["quiz_existing"] + check["exam_existing"]
+        if existing_total:
+            msg += f" Outros {existing_total} já estão no sistema e serão ignorados."
+        st.info(msg)
+
         confirm = st.checkbox(
             f"Confirmo que estes resultados pertencem a **{target}**.",
             key=f"import_results_confirm_{target}",
@@ -494,7 +516,7 @@ def _render_import_results_section():
             )
             stats = import_results(payload, target, email_for_target)
             st.session_state["import_results_flash"] = (
-                f"Importação concluída para **{target}**: "
+                f"✅ Importação concluída para **{target}**: "
                 f"{stats['quiz_added']} resultado(s) de quiz adicionados "
                 f"({stats['quiz_skipped']} já existiam) · "
                 f"{stats['exam_added']} prova(s) adicionadas "
