@@ -120,6 +120,67 @@ _STUDENT_AREA_CSS = """
 .kahoot-exam-q {
     padding: 0.25rem 0 0.5rem;
 }
+.kahoot-history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.7rem 1rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--kahoot-border);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--secondary-background-color) 45%, transparent);
+}
+.kahoot-history-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-color);
+    line-height: 1.35;
+}
+.kahoot-history-meta {
+    margin: 0.15rem 0 0 0;
+    font-size: 0.8rem;
+    color: var(--kahoot-text-subtle);
+}
+.kahoot-history-badge {
+    flex-shrink: 0;
+    padding: 0.3rem 0.85rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.kahoot-history-badge.good {
+    color: #16a34a;
+    background: rgba(34, 197, 94, 0.14);
+    border: 1px solid rgba(34, 197, 94, 0.45);
+}
+.kahoot-history-badge.mid {
+    color: #d97706;
+    background: rgba(234, 179, 8, 0.14);
+    border: 1px solid rgba(234, 179, 8, 0.5);
+}
+.kahoot-history-badge.bad {
+    color: #dc2626;
+    background: rgba(239, 68, 68, 0.13);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+}
+.kahoot-history-badge.neutral {
+    color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+}
+.kahoot-history-empty {
+    padding: 1.1rem 1.25rem;
+    margin-bottom: 0.5rem;
+    border: 1px dashed var(--kahoot-border);
+    border-radius: 10px;
+    text-align: center;
+    color: var(--kahoot-text-muted);
+    font-size: 0.9rem;
+    background: color-mix(in srgb, var(--secondary-background-color) 30%, transparent);
+}
 """
 
 
@@ -196,6 +257,36 @@ def render_student_hero(title: str, message: str) -> None:
             <p>{message}</p>
         </div>
         """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_history_item(
+    *,
+    title: str,
+    meta: str,
+    badge_text: str,
+    badge_tone: str = "neutral",
+) -> None:
+    """Linha de histórico (resultado de quiz ou prova) em formato de cartão."""
+    tone = badge_tone if badge_tone in {"good", "mid", "bad", "neutral"} else "neutral"
+    st.markdown(
+        f"""
+        <div class="kahoot-history-item">
+            <div>
+                <p class="kahoot-history-title">{title}</p>
+                <p class="kahoot-history-meta">{meta}</p>
+            </div>
+            <span class="kahoot-history-badge {tone}">{badge_text}</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_history_empty(message: str) -> None:
+    st.markdown(
+        f'<div class="kahoot-history-empty">{message}</div>',
         unsafe_allow_html=True,
     )
 

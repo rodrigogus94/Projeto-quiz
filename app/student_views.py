@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-import pandas as pd
 import streamlit as st
 
 import auth_users
@@ -38,6 +37,8 @@ from app.components import (
     render_classification_badge,
     render_empty_state,
     render_flow_header,
+    render_history_empty,
+    render_history_item,
     render_result_banner,
     render_student_hero,
 )
@@ -136,21 +137,34 @@ def _render_my_quiz_history():
 
     st.markdown("#### 📜 Meus resultados")
     if not mine:
-        st.caption("Você ainda não concluiu nenhum quiz.")
-        return
-    rows = []
-    for e in mine:
-        mat = get_material(e.get("material_id") or "")
-        pct = (e["score"] / e["total"] * 100) if e.get("total") else 0.0
-        rows.append(
-            {
-                "Quiz": mat["title"] if mat else "(material removido)",
-                "Acertos": f"{e['score']}/{e['total']}",
-                "% Acertos": round(pct, 1),
-                "Quando (UTC)": _format_when(e.get("submitted_at")),
-            }
+        render_history_empty(
+            "🎯 Você ainda não concluiu nenhum quiz.<br>"
+            "Seu histórico aparecerá aqui assim que você terminar o primeiro."
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        return
+
+    pcts = [
+        (e["score"] / e["total"] * 100) for e in mine if e.get("total")
+    ]
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("Quizzes concluídos", len(mine))
+    with m2:
+        st.metric("Melhor resultado", f"{max(pcts):.0f}%" if pcts else "—")
+    with m3:
+        st.metric("Média geral", f"{sum(pcts) / len(pcts):.0f}%" if pcts else "—")
+
+    for e in reversed(mine):
+        mat = get_material(e.get("material_id") or "")
+        total = e.get("total") or 0
+        pct = (e["score"] / total * 100) if total else 0.0
+        tone = "good" if pct >= 70 else ("mid" if pct >= 40 else "bad")
+        render_history_item(
+            title=mat["title"] if mat else "(material removido)",
+            meta=f"🕑 {_format_when(e.get('submitted_at'))} (UTC)",
+            badge_text=f"{e['score']}/{total} · {pct:.0f}%",
+            badge_tone=tone,
+        )
     _render_results_download("dl_results_quiz_history")
 
 
@@ -169,22 +183,33 @@ def _render_my_exam_history():
 
     st.markdown("#### 📜 Minhas provas enviadas")
     if not mine:
-        st.caption("Você ainda não enviou nenhuma prova.")
-        return
-    rows = []
-    for s in mine:
-        exam = get_exam(s.get("exam_id") or "")
-        counts = (s.get("summary") or {}).get("counts", {})
-        rows.append(
-            {
-                "Prova": exam["title"] if exam else "(prova removida)",
-                "A": counts.get("A", 0),
-                "PA": counts.get("PA", 0),
-                "NA": counts.get("NA", 0),
-                "Enviada em (UTC)": _format_when(s.get("submitted_at")),
-            }
+        render_history_empty(
+            "📄 Você ainda não enviou nenhuma prova.<br>"
+            "Assim que enviar, o histórico aparecerá aqui."
         )
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        return
+    for s in reversed(mine):
+        exam = get_exam(s.get("exam_id") or "")
+        summary = s.get("summary") or {}
+        counts = summary.get("counts", {})
+        pct = summary.get("percent")
+        tone = (
+            "neutral"
+            if pct is None
+            else ("good" if pct >= 70 else ("mid" if pct >= 40 else "bad"))
+        )
+        badge = f"{pct:.0f}%" if pct is not None else "Enviada"
+        render_history_item(
+            title=exam["title"] if exam else "(prova removida)",
+            meta=(
+                f"✅ {counts.get('A', 0)} acertos · "
+                f"🟡 {counts.get('PA', 0)} parciais · "
+                f"🔴 {counts.get('NA', 0)} erradas · "
+                f"🕑 {_format_when(s.get('submitted_at'))} (UTC)"
+            ),
+            badge_text=badge,
+            badge_tone=tone,
+        )
 
 
 def render_student_panel():
