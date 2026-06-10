@@ -25,6 +25,12 @@ from quiz_storage import (
     load_students,
 )
 
+from app.result_transfer import (
+    build_student_export,
+    export_bytes as results_export_bytes,
+    export_filename as results_export_filename,
+)
+
 from app.auth_ui import render_student_register_form
 from app.charts import plot_student_result
 from app.components import (
@@ -79,6 +85,28 @@ def approved_students() -> list:
     return [s for s in load_students() if auth_users.is_approved_student_name(s["name"])]
 
 
+def _render_results_download(widget_key: str):
+    """Botão para baixar o arquivo com todos os resultados do aluno."""
+    name = bound_student_name() or st.session_state.get("current_student_name") or ""
+    if not name.strip():
+        return
+    user = st.session_state.get("current_user") or {}
+    payload = build_student_export(name, user.get("email"))
+    if not payload["quiz_results"] and not payload["exam_submissions"]:
+        return
+    st.download_button(
+        "📥 Baixar arquivo de resultados (enviar ao professor)",
+        data=results_export_bytes(payload),
+        file_name=results_export_filename(name),
+        mime="application/json",
+        key=widget_key,
+        help=(
+            "Gera um arquivo com todos os seus resultados de quizzes e provas. "
+            "Envie-o ao professor para que ele registre suas notas."
+        ),
+    )
+
+
 def _format_when(iso_ts: str | None) -> str:
     if not iso_ts:
         return "—"
@@ -123,6 +151,7 @@ def _render_my_quiz_history():
             }
         )
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    _render_results_download("dl_results_quiz_history")
 
 
 def _render_my_exam_history():
@@ -476,6 +505,8 @@ def _render_quiz_results():
         else:
             st.warning("Não desanime — refaça o quiz para fixar o conteúdo.")
 
+    _render_results_download("dl_results_quiz_done")
+
     can_retry, retry_msg = quiz_attempt_permission(
         st.session_state.current_student_name,
         st.session_state.current_material_id or "",
@@ -611,6 +642,8 @@ def _render_exam_results():
             key="student_download_exam_pdf",
             use_container_width=True,
         )
+
+    _render_results_download("dl_results_exam_done")
 
     if st.button("↩️ Voltar às provas", type="primary"):
         st.session_state.exam_mode = "select"

@@ -33,6 +33,8 @@ from quiz_storage import (
     update_student,
 )
 
+from app.result_transfer import import_results, parse_student_export
+
 from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
 from app.charts import (
     plot_attempts_comparison,
@@ -324,8 +326,137 @@ def render_exams_tab():
             )
 
 
+def _render_import_results_section():
+    """Importa o arquivo de resultados gerado pelo aluno, com confirmação."""
+    with st.expander("📂 Importar arquivo de resultados de aluno"):
+        flash = st.session_state.pop("import_results_flash", None)
+        if flash:
+            st.success(flash)
+
+        st.caption(
+            "O aluno gera o arquivo na área dele (botão **Baixar arquivo de resultados**) "
+            "e envia para você. Ao importar, os resultados são adicionados ao aluno "
+            "confirmado abaixo, sem duplicar tentativas já registradas."
+        )
+        up = st.file_uploader(
+            "Arquivo de resultados (.json)",
+            type=["json"],
+            key="import_results_file",
+        )
+        if not up:
+            return
+
+        payload, err = parse_student_export(up.getvalue())
+        if err:
+            st.error(err)
+            return
+
+        student = payload["student"]
+        detected_name = student["name"]
+        detected_email = student.get("email")
+
+        st.success("✅ Arquivo íntegro — código de verificação confere.")
+        ident = f"**Aluno identificado:** {detected_name}"
+        if detected_email:
+            ident += f" · `{detected_email}`"
+        st.markdown(ident)
+
+        quiz_results = payload.get("quiz_results", [])
+        exam_submissions = payload.get("exam_submissions", [])
+        if quiz_results:
+            st.markdown(f"**Quizzes no arquivo ({len(quiz_results)}):**")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Quiz": e.get("material_title") or "(material desconhecido)",
+                            "Acertos": f"{e.get('score', 0)}/{e.get('total', 0)}",
+                            "Quando (UTC)": (e.get("submitted_at") or "—")[:16].replace("T", " "),
+                        }
+                        for e in quiz_results
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        if exam_submissions:
+            st.markdown(f"**Provas no arquivo ({len(exam_submissions)}):**")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Prova": s.get("exam_title") or "(prova desconhecida)",
+                            "A": (s.get("summary") or {}).get("counts", {}).get("A", 0),
+                            "PA": (s.get("summary") or {}).get("counts", {}).get("PA", 0),
+                            "NA": (s.get("summary") or {}).get("counts", {}).get("NA", 0),
+                            "Enviada em (UTC)": (s.get("submitted_at") or "—")[:16].replace("T", " "),
+                        }
+                        for s in exam_submissions
+                    ]
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        if not quiz_results and not exam_submissions:
+            st.warning("O arquivo não contém nenhum resultado.")
+            return
+
+        st.markdown("---")
+        st.markdown("##### Validação do professor")
+        names = [s["name"] for s in load_students()]
+        detected_key = detected_name.strip().lower()
+        match = next((n for n in names if n.strip().lower() == detected_key), None)
+        if match:
+            options = names
+            default_index = names.index(match)
+        else:
+            st.warning(
+                f"O aluno **{detected_name}** não está na lista de alunos cadastrados. "
+                "Confira com atenção a quem estes resultados pertencem."
+            )
+            options = [detected_name] + names
+            default_index = 0
+
+        target = st.selectbox(
+            "Atribuir os resultados ao aluno:",
+            options,
+            index=default_index,
+            key="import_results_target",
+        )
+        if target.strip().lower() != detected_key:
+            st.warning(
+                f"Atenção: o arquivo foi gerado por **{detected_name}**, "
+                f"mas será atribuído a **{target}**."
+            )
+        confirm = st.checkbox(
+            f"Confirmo que estes resultados pertencem a **{target}**.",
+            key=f"import_results_confirm_{target}",
+        )
+        if st.button(
+            "✅ Importar resultados",
+            type="primary",
+            disabled=not confirm,
+            key="import_results_btn",
+        ):
+            email_for_target = (
+                detected_email if target.strip().lower() == detected_key else None
+            )
+            stats = import_results(payload, target, email_for_target)
+            st.session_state["import_results_flash"] = (
+                f"Importação concluída para **{target}**: "
+                f"{stats['quiz_added']} resultado(s) de quiz adicionados "
+                f"({stats['quiz_skipped']} já existiam) · "
+                f"{stats['exam_added']} prova(s) adicionadas "
+                f"({stats['exam_skipped']} já existiam)."
+            )
+            st.rerun()
+
+
 def render_results_tab(materials: list):
     st.subheader("Resultados dos quizzes")
+
+    _render_import_results_section()
+
     if not materials:
         st.info("Sem materiais para analisar.")
         return
