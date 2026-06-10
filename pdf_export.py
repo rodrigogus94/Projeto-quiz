@@ -10,7 +10,7 @@ from pathlib import Path
 from fpdf import FPDF
 
 CHOICE_COLORS = ("Vermelho", "Azul", "Amarelo", "Verde")
-_FONT_REGISTERED = False
+_UNICODE_FONT = False
 
 
 def safe_filename(name: str) -> str:
@@ -20,8 +20,32 @@ def safe_filename(name: str) -> str:
     return re.sub(r"\s+", "_", cleaned.strip()) or "aluno"
 
 
-def _font_candidates() -> list[tuple[str, str]]:
-    paths = []
+def _matplotlib_font_paths() -> list[tuple[Path, Path]]:
+    """DejaVu via matplotlib (disponível no Streamlit Cloud com requirements.txt)."""
+    try:
+        import matplotlib
+
+        ttf_dir = Path(matplotlib.get_data_path()) / "fonts" / "ttf"
+        regular = ttf_dir / "DejaVuSans.ttf"
+        bold = ttf_dir / "DejaVuSans-Bold.ttf"
+        if regular.exists():
+            return [(regular, bold if bold.exists() else regular)]
+    except Exception:
+        pass
+    return []
+
+
+def _font_candidates() -> list[tuple[Path, Path]]:
+    paths: list[tuple[Path, Path]] = []
+    paths.extend(_matplotlib_font_paths())
+
+    bundled = Path(__file__).resolve().parent / "fonts"
+    paths.extend(
+        [
+            (bundled / "DejaVuSans.ttf", bundled / "DejaVuSans-Bold.ttf"),
+        ]
+    )
+
     if sys.platform == "win32":
         win = Path("C:/Windows/Fonts")
         paths.extend(
@@ -31,35 +55,45 @@ def _font_candidates() -> list[tuple[str, str]]:
             ]
         )
     else:
-        linux = Path("/usr/share/fonts/truetype/dejavu")
-        paths.extend(
-            [
-                (linux / "DejaVuSans.ttf", linux / "DejaVuSans-Bold.ttf"),
-            ]
-        )
-    return [(str(r), str(b)) for r, b in paths if r.exists()]
+        for linux in (
+            Path("/usr/share/fonts/truetype/dejavu"),
+            Path("/usr/share/fonts/TTF"),
+            Path("/usr/share/fonts/dejavu"),
+        ):
+            paths.append((linux / "DejaVuSans.ttf", linux / "DejaVuSans-Bold.ttf"))
+
+    return [(r, b) for r, b in paths if r.exists()]
 
 
 def _setup_fonts(pdf: FPDF) -> str:
-    global _FONT_REGISTERED
+    global _UNICODE_FONT
     for regular, bold in _font_candidates():
         try:
-            pdf.add_font("AppFont", "", regular)
-            if Path(bold).exists():
-                pdf.add_font("AppFont", "B", bold)
-            else:
-                pdf.add_font("AppFont", "B", regular)
-            _FONT_REGISTERED = True
+            pdf.add_font("AppFont", "", str(regular))
+            pdf.add_font("AppFont", "B", str(bold if bold.exists() else regular))
+            _UNICODE_FONT = True
             return "AppFont"
         except Exception:
             continue
+    _UNICODE_FONT = False
     return "Helvetica"
+
+
+def _pdf_text(text: str) -> str:
+    """Garante texto compatível com a fonte ativa (Unicode ou Latin-1)."""
+    text = (text or " ").replace("\u2014", "-").replace("\u2013", "-")
+    text = text.replace("\u2190", "<-").replace("\u2022", "*")
+    if _UNICODE_FONT:
+        return text
+    normalized = unicodedata.normalize("NFKD", text)
+    ascii_text = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
+    return ascii_text.encode("latin-1", "replace").decode("latin-1")
 
 
 def _write_line(pdf: FPDF, font: str, style: str, size: int, text: str, h: float = 6):
     pdf.set_x(pdf.l_margin)
     pdf.set_font(font, style, size)
-    pdf.multi_cell(pdf.epw, h, text or " ")
+    pdf.multi_cell(pdf.epw, h, _pdf_text(text))
 
 
 def _format_date(iso: str) -> str:
