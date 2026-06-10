@@ -744,14 +744,6 @@ def _render_exam_questions_readonly(exam: dict, submission: dict | None = None):
             elif q_view["type"] == "justify" and ans and ans.get("text"):
                 st.markdown("**Sua resposta:**")
                 st.write(ans["text"])
-            if ans:
-                if ans.get("type") == "choice_with_justify":
-                    mc_ok = "✅ MC correta" if ans.get("mc_correct") else "❌ MC incorreta"
-                    st.caption(mc_ok)
-                    if not ans.get("mc_correct"):
-                        render_classification_badge(ans.get("justify_classification", "NA"))
-                else:
-                    render_classification_badge(ans.get("classification", "NA"))
 
 
 def _render_exam_review():
@@ -924,73 +916,26 @@ def _render_exam_results(*, read_only: bool = False):
         st.warning("Nenhum envio encontrado para esta prova.")
         return
     summary = result.get("summary", summarize_answers(result["answers"]))
-    counts = summary["counts"]
-    is_uc2 = summary.get("grading_model") == "uc2_recovery"
 
     title = (
         f"Prova enviada, {result['student_name']}!"
         if not read_only
         else f"Revisão da prova — {result['student_name']}"
     )
-    if is_uc2:
-        msg = (
-            f"MC: {summary.get('mc_correct', 0)}/{int(summary['max_points'])} acertos "
-            f"({summary.get('mc_percent', 0):.0f}%) · "
-            f"Recuperação: +{summary.get('recovery_points', 0):.1f} · "
-            f"Nota final: {summary['total_points']:.1f}/{summary['max_points']:.0f} "
-            f"({summary['percent']:.0f}%)"
-        )
-    else:
-        msg = (
-            f"Correção automática: {summary['total_points']:.1f} de "
-            f"{summary['max_points']:.0f} pontos ({summary['percent']:.0f}%)."
-        )
+    msg = (
+        f"Nota final: {summary['total_points']:.1f}/{summary['max_points']:.0f} "
+        f"({summary['percent']:.0f}%)"
+    )
     render_result_banner(title, msg)
     if read_only:
         st.caption("🔒 Modo somente leitura — as respostas não podem ser alteradas.")
 
-    if is_uc2:
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Nota final", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
-        with c2:
-            st.metric("Acertos MC", summary.get("mc_correct", 0))
-        with c3:
-            st.metric("Recuperação", f"+{summary.get('recovery_points', 0):.1f}")
-        with c4:
-            st.metric("Justif. A / PA / NA", f"{counts['A']}/{counts['PA']}/{counts['NA']}")
-    else:
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Pontuação", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
-        with c2:
-            st.metric("A — Acertou", counts["A"])
-        with c3:
-            st.metric("PA — Parcial", counts["PA"])
-        with c4:
-            st.metric("NA — Não acertou", counts["NA"])
+    st.metric("Nota final", f"{summary['total_points']:.1f}/{summary['max_points']:.0f}")
 
     exam_for_view = get_exam(result.get("exam_id"))
     if exam_for_view and read_only:
         st.subheader("Suas respostas")
         _render_exam_questions_readonly(exam_for_view, result)
-    else:
-        st.subheader("Resultado por questão")
-        for i, ans in enumerate(result["answers"]):
-            if ans.get("type") == "choice_with_justify":
-                mc_txt = "✅ MC" if ans.get("mc_correct") else "❌ MC"
-                pts = ans.get("points", 0)
-                with st.container(border=True):
-                    st.markdown(f"**Questão {i + 1}** · Múltipla escolha + justificativa")
-                    st.caption(f"{mc_txt} · {pts:.1f} pt nesta questão")
-                    if not ans.get("mc_correct"):
-                        render_classification_badge(ans.get("justify_classification", "NA"))
-            else:
-                clf = ans.get("classification", "NA")
-                tipo = "Múltipla escolha" if ans.get("type") == "choice" else "Justificativa"
-                with st.container(border=True):
-                    st.markdown(f"**Questão {i + 1}** · {tipo}")
-                    render_classification_badge(clf)
 
     exam_for_pdf = get_exam(result.get("exam_id"))
     if exam_for_pdf:
