@@ -24,6 +24,12 @@ from quiz_storage import (
     load_students,
 )
 
+from app.email_sender import (
+    mailto_link,
+    professor_email,
+    send_results_email,
+    smtp_configured,
+)
 from app.result_transfer import (
     build_student_export,
     export_bytes as results_export_bytes,
@@ -87,7 +93,7 @@ def approved_students() -> list:
 
 
 def _render_results_download(widget_key: str):
-    """Botão para baixar o arquivo com todos os resultados do aluno."""
+    """Baixar e/ou enviar por e-mail o arquivo com todos os resultados do aluno."""
     name = bound_student_name() or st.session_state.get("current_student_name") or ""
     if not name.strip():
         return
@@ -95,10 +101,13 @@ def _render_results_download(widget_key: str):
     payload = build_student_export(name, user.get("email"))
     if not payload["quiz_results"] and not payload["exam_submissions"]:
         return
+    file_bytes = results_export_bytes(payload)
+    filename = results_export_filename(name)
+
     st.download_button(
         "📥 Baixar arquivo de resultados (enviar ao professor)",
-        data=results_export_bytes(payload),
-        file_name=results_export_filename(name),
+        data=file_bytes,
+        file_name=filename,
         mime="application/json",
         key=widget_key,
         help=(
@@ -106,6 +115,70 @@ def _render_results_download(widget_key: str):
             "Envie-o ao professor para que ele registre suas notas."
         ),
     )
+    _render_email_to_professor(
+        widget_key=f"{widget_key}_email",
+        student_name=name,
+        student_email=user.get("email"),
+        file_bytes=file_bytes,
+        filename=filename,
+    )
+
+
+def _render_email_to_professor(
+    *,
+    widget_key: str,
+    student_name: str,
+    student_email: str | None,
+    file_bytes: bytes,
+    filename: str,
+):
+    """E-mail pré-pronto ao professor com o anexo fixo gerado pelo app."""
+    dest = professor_email()
+    if not dest:
+        return
+
+    with st.expander("✉️ Enviar por e-mail ao professor"):
+        if smtp_configured():
+            st.markdown(f"**Para:** `{dest}`")
+            st.markdown(f"**Assunto:** [Projeto Quiz] Resultados de {student_name}")
+            st.markdown(f"**📎 Anexo:** `{filename}`")
+            st.caption(
+                "🔒 O anexo é gerado automaticamente pelo app com os seus resultados. "
+                "Não é possível adicionar outros anexos."
+            )
+            note = st.text_area(
+                "Mensagem adicional (opcional)",
+                key=f"{widget_key}_note",
+                placeholder="Ex.: Professor, segue meu resultado da semana.",
+                max_chars=500,
+            )
+            if st.button(
+                "✉️ Enviar e-mail",
+                type="primary",
+                key=f"{widget_key}_btn",
+                use_container_width=True,
+            ):
+                with st.spinner("Enviando e-mail..."):
+                    err = send_results_email(
+                        student_name=student_name,
+                        student_email=student_email,
+                        file_bytes=file_bytes,
+                        filename=filename,
+                        extra_note=note or "",
+                    )
+                if err:
+                    st.error(err)
+                else:
+                    st.success(f"✅ E-mail enviado para {dest}!")
+                    st.toast("✉️ Resultados enviados ao professor!")
+        else:
+            st.caption(
+                "O envio automático não está ativo. Use o link abaixo para abrir "
+                "seu aplicativo de e-mail já preenchido e **anexe o arquivo baixado acima**."
+            )
+            st.markdown(
+                f"[✉️ Abrir e-mail pré-pronto para o professor]({mailto_link(student_name, student_email)})"
+            )
 
 
 def _format_when(iso_ts: str | None) -> str:
