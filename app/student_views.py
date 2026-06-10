@@ -103,8 +103,9 @@ def _active_exam_id() -> str | None:
 
 
 def _start_exam_session(exam_id: str, *, mode: str, submission: dict | None = None):
+    # Não alterar selected_exam_id aqui: é chave do selectbox e o Streamlit
+    # proíbe modificar após o widget já ter sido renderizado na mesma execução.
     st.session_state.current_exam_id = exam_id
-    st.session_state.selected_exam_id = exam_id
     st.session_state.exam_submission_result = submission
     st.session_state.exam_mode = mode
 
