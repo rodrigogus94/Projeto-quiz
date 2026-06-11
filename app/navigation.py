@@ -59,9 +59,30 @@ def _bootstrap_nav_section(
     return current
 
 
-def _sync_nav_widget(widget_key: str, section: str) -> None:
-    if st.session_state.get(widget_key) != section:
+def _init_nav_widget(widget_key: str, section: str) -> None:
+    """Só define o widget na primeira vez; não sobrescreve clique do usuário."""
+    if widget_key not in st.session_state:
         st.session_state[widget_key] = section
+
+
+def _on_professor_nav_change() -> None:
+    choice = st.session_state[PROFESSOR_WIDGET_KEY]
+    st.session_state[PROFESSOR_NAV_KEY] = choice
+    _sync_query_param("p_section", choice)
+
+
+def _on_student_nav_change() -> None:
+    choice = st.session_state[STUDENT_WIDGET_KEY]
+    st.session_state[STUDENT_NAV_KEY] = choice
+    _sync_query_param("s_section", choice)
+
+
+def sync_nav_widgets_from_persist() -> None:
+    """Alinha radios com a seção salva (usar só no recarregar do app)."""
+    if PROFESSOR_NAV_KEY in st.session_state:
+        st.session_state[PROFESSOR_WIDGET_KEY] = st.session_state[PROFESSOR_NAV_KEY]
+    if STUDENT_NAV_KEY in st.session_state:
+        st.session_state[STUDENT_WIDGET_KEY] = st.session_state[STUDENT_NAV_KEY]
 
 
 def get_professor_section() -> str:
@@ -88,7 +109,7 @@ def render_professor_sidebar_nav():
         section_keys,
         section_keys[0],
     )
-    _sync_nav_widget(PROFESSOR_WIDGET_KEY, current)
+    _init_nav_widget(PROFESSOR_WIDGET_KEY, current)
 
     st.sidebar.markdown('<div class="kahoot-sidebar-nav-title">Navegação</div>', unsafe_allow_html=True)
     choice = st.sidebar.radio(
@@ -96,11 +117,12 @@ def render_professor_sidebar_nav():
         options=section_keys,
         format_func=lambda key: section_labels[key],
         key=PROFESSOR_WIDGET_KEY,
+        on_change=_on_professor_nav_change,
         label_visibility="collapsed",
     )
     if choice != st.session_state[PROFESSOR_NAV_KEY]:
         st.session_state[PROFESSOR_NAV_KEY] = choice
-    _sync_query_param("p_section", st.session_state[PROFESSOR_NAV_KEY])
+        _sync_query_param("p_section", choice)
     st.sidebar.divider()
 
 
@@ -113,7 +135,7 @@ def render_student_sidebar_nav():
         section_keys,
         section_keys[0],
     )
-    _sync_nav_widget(STUDENT_WIDGET_KEY, current)
+    _init_nav_widget(STUDENT_WIDGET_KEY, current)
 
     st.sidebar.markdown('<div class="kahoot-sidebar-nav-title">Navegação</div>', unsafe_allow_html=True)
     choice = st.sidebar.radio(
@@ -121,9 +143,10 @@ def render_student_sidebar_nav():
         options=section_keys,
         format_func=lambda key: "🎮 Quiz" if key == "quiz" else "📝 Provas",
         key=STUDENT_WIDGET_KEY,
+        on_change=_on_student_nav_change,
         label_visibility="collapsed",
     )
     if choice != st.session_state[STUDENT_NAV_KEY]:
         st.session_state[STUDENT_NAV_KEY] = choice
-    _sync_query_param("s_section", st.session_state[STUDENT_NAV_KEY])
+        _sync_query_param("s_section", choice)
     st.sidebar.divider()

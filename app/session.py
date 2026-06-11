@@ -86,10 +86,13 @@ def _migrate_legacy_nav_keys() -> None:
 
 def soft_reload_app() -> None:
     """Recarrega dados e interface sem perder login nem seção da barra lateral."""
+    from app.navigation import sync_nav_widgets_from_persist
+
     migrate_legacy_leaderboard()
     auth_users.bootstrap_data_store()
     quiz_storage.repair_exams_questions()
     bootstrap_auth_config()
+    sync_nav_widgets_from_persist()
     st.rerun()
 
 
