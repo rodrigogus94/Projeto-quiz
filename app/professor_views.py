@@ -275,10 +275,14 @@ def render_exams_tab():
         if questions:
             create_exam(new_title.strip(), questions, deadline_at=deadline_at)
             summary = exam_summary(questions)
-            st.success(
+            composite = summary.get("composite", 0)
+            msg = (
                 f"Prova criada: {summary['total']} questões "
                 f"({summary['choice']} múltipla escolha, {summary['justify']} justificativas)."
             )
+            if composite:
+                msg += f" **{composite}** com campo de justificativa para o aluno."
+            st.success(msg)
             st.rerun()
         else:
             st.error("Nenhuma questão identificada. Verifique o formato do arquivo.")

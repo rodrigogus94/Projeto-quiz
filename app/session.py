@@ -41,6 +41,7 @@ def login_user(user: dict):
 def init_session_state():
     migrate_legacy_leaderboard()
     auth_users.bootstrap_data_store()
+    quiz_storage.repair_exams_questions()
     bootstrap_auth_config()
     defaults = {
         "role": None,

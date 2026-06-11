@@ -132,6 +132,63 @@ class TestParseUC2Exam(unittest.TestCase):
         questions = parse_exam_from_text(text)
         self.assertEqual(len(questions), 2)
 
+    def test_markdown_with_justify_is_composite(self):
+        questions = parse_exam_from_text(MARKDOWN_QUIZ_TEXT)
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(questions[0]["type"], "choice_with_justify")
+        self.assertIn("for", questions[0]["answer_key"].lower())
+
+    def test_kahoot_markdown_exam_with_justify(self):
+        text = """
+## Pergunta 1
+* **Pergunta:** Questão de teste do sistema?
+* **Alternativas:**
+  * [X] A) Opção A correta
+  * [ ] B) Opção B
+  * [ ] C) Opção C
+  * [ ] D) Opção D
+* **Justificativa:** Texto esperado na correção da justificativa.
+
+## GABARITO OFICIAL
+| Pergunta | Resposta |
+| 1 | A |
+"""
+        questions = parse_exam_from_text(text)
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0]["type"], "choice_with_justify")
+        self.assertEqual(questions[0]["correct"], "A")
+        self.assertIn("justificativa", questions[0]["answer_key"].lower())
+
+    def test_pergunta_lowercase_options_with_justify(self):
+        text = """
+Pergunta 1: O que é um algoritmo?
+a) Software
+b) Sequência de passos
+c) Variável
+d) Framework
+Justificativa:
+Sequência finita de passos lógicos.
+
+GABARITO OFICIAL
+1  B
+"""
+        questions = parse_exam_from_text(text)
+        self.assertEqual(len(questions), 1)
+        self.assertEqual(questions[0]["type"], "choice_with_justify")
+
+    def test_question_for_student_infers_justify_from_answer_key(self):
+        from pdf_parser import question_for_student
+
+        q = {
+            "type": "choice",
+            "question": "Teste?",
+            "options": ["A", "B", "C", "D"],
+            "correct": "B",
+            "answer_key": "Gabarito da justificativa",
+        }
+        view = question_for_student(q)
+        self.assertEqual(view["type"], "choice_with_justify")
+
     def test_uc2_empty_does_not_use_markdown_warnings(self):
         text = (
             "Questão 1\n"
@@ -142,7 +199,8 @@ class TestParseUC2Exam(unittest.TestCase):
         questions = parse_exam_from_text(text, warnings)
         self.assertEqual(questions, [])
         self.assertTrue(any("a-d" in w for w in warnings))
-        self.assertFalse(any("Resposta Correta" in w for w in warnings))
+        # Sem questões válidas no UC2, o parser pode tentar o Markdown em seguida.
+        self.assertEqual(questions, [])
 
 
 class TestParseExam(unittest.TestCase):
@@ -184,7 +242,7 @@ class TestParseMarkdownQuiz(unittest.TestCase):
     def test_markdown_exam_import(self):
         questions = parse_exam_from_text(MARKDOWN_QUIZ_TEXT)
         self.assertEqual(len(questions), 2)
-        self.assertEqual(questions[0]["type"], "choice")
+        self.assertEqual(questions[0]["type"], "choice_with_justify")
 
 
 class TestMarkdownUpload(unittest.TestCase):

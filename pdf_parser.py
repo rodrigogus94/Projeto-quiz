@@ -42,12 +42,20 @@ UC2_QUESTAO_HEADER = re.compile(
     r"^#{0,6}\s*Quest[aã]o\s+(\d+)\s*:?\s*$", re.MULTILINE | re.IGNORECASE
 )
 UC2_OPTION_LINE = re.compile(
-    r"^(?:[*\-●○•]\s*)?([A-Da-d])\)\s*(.*)$", re.IGNORECASE
+    r"^(?:[*\-●○•]\s*)?([A-Da-d])\)\s*(.*)$",
+    re.IGNORECASE | re.MULTILINE,
 )
-UC2_JUSTIFICATIVA_LINE = re.compile(r"^Justificativa\s*:\s*(.*)$", re.IGNORECASE)
+UC2_JUSTIFICATIVA_LINE = re.compile(
+    r"^(?:\*\*)?Justificativa(?:\*\*)?\s*:\s*(.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
 UC2_GABARITO_SECTION = re.compile(r"GABARITO(?:\s+OFICIAL)?", re.IGNORECASE)
 UC2_GABARITO_ROW = re.compile(
     r"(?:^|\n)\s*(\d{1,2})\s+([A-Da-d])\b"
+)
+MD_GABARITO_ROW = re.compile(
+    r"^\|\s*(\d+)\s*\|\s*([A-Da-d])\s*\|",
+    re.MULTILINE | re.IGNORECASE,
 )
 
 
@@ -126,6 +134,36 @@ def _parse_markdown_quiz_questions(full_text: str, warnings: list | None = None)
     return questions
 
 
+def _extract_markdown_justify_key(block: str) -> str:
+    match = re.search(
+        r"(?:\*\*)?Justificativa(?:\*\*)?\s*:\s*(.+?)(?=\n\s*#{1,6}\s*Quest|\Z)",
+        block,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not match:
+        return ""
+    text = match.group(1).strip()
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    return _clean_text(text)
+
+
+def _parse_markdown_composite_block(block: str) -> dict | None:
+    """Markdown com 4 opções, Resposta Correta e bloco Justificativa: (formato UC2)."""
+    parsed = _parse_markdown_choice_block(block)
+    if not parsed:
+        return None
+    answer_key = _extract_markdown_justify_key(block)
+    if not answer_key:
+        return None
+    return {
+        "type": "choice_with_justify",
+        "question": parsed["question"],
+        "options": parsed["options"],
+        "correct": parsed["correct"],
+        "answer_key": answer_key,
+    }
+
+
 def _parse_markdown_exam_questions(full_text: str, warnings: list | None = None) -> list:
     matches = list(QUESTAO_HEADER_MD.finditer(full_text))
     if not matches:
@@ -137,16 +175,18 @@ def _parse_markdown_exam_questions(full_text: str, warnings: list | None = None)
         block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
         block = full_text[match.end() : block_end]
 
-        parsed = _parse_markdown_choice_block(block)
-        if parsed:
-            questions.append(
-                {
+        parsed = _parse_markdown_composite_block(block)
+        if not parsed:
+            parsed = _parse_markdown_choice_block(block)
+            if parsed:
+                parsed = {
                     "type": "choice",
                     "question": parsed["question"],
                     "options": parsed["options"],
                     "correct": parsed["correct"],
                 }
-            )
+        if parsed:
+            questions.append(parsed)
         else:
             _warn(
                 warnings,
@@ -159,6 +199,7 @@ def _parse_markdown_exam_questions(full_text: str, warnings: list | None = None)
 def _parse_kahoot_question_block(block: str) -> dict | None:
     question_parts: list[str] = []
     options: list[list[str]] = []
+    justify_parts: list[str] = []
     correct: str | None = None
     current: str | None = None
 
@@ -175,9 +216,12 @@ def _parse_kahoot_question_block(block: str) -> dict | None:
                 current = "question"
                 if rest:
                     question_parts.append(rest)
+            elif field == "justificativa":
+                current = "justify"
+                if rest:
+                    justify_parts.append(_strip_markdown_inline(rest))
             else:
-                # "Alternativas:" apenas abre a lista; "Tempo limite" e
-                # "Justificativa" são ignorados (incluindo linhas de continuação).
+                # "Alternativas:" abre a lista; "Tempo limite" é ignorado.
                 current = None
             continue
 
@@ -196,6 +240,8 @@ def _parse_kahoot_question_block(block: str) -> dict | None:
         # Linha de continuação (texto quebrado em várias linhas, comum em PDF).
         if current == "question":
             question_parts.append(line)
+        elif current == "justify":
+            justify_parts.append(_strip_markdown_inline(line))
         elif current == "option" and options:
             if ALT_CORRETA_MARK.search(line):
                 correct = options[-1][0]
@@ -216,7 +262,50 @@ def _parse_kahoot_question_block(block: str) -> dict | None:
     ):
         return None
 
-    return {"question": question_text, "options": opts, "correct": correct}
+    result: dict = {"question": question_text, "options": opts, "correct": correct}
+    if justify_parts:
+        result["answer_key"] = _clean_text(" ".join(justify_parts))
+    return result
+
+
+def _parse_kahoot_exam_questions(full_text: str, warnings: list | None = None) -> list:
+    """Pergunta N estilo Kahoot/Markdown com [X], Justificativa e gabarito em tabela."""
+    matches = list(KAHOOT_HEADER.finditer(full_text))
+    if not matches:
+        return []
+
+    gabarito = _parse_uc2_gabarito_table(full_text)
+    questions = []
+    for i, match in enumerate(matches):
+        num = match.group(1)
+        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+        block = full_text[match.end() : block_end]
+        if UC2_GABARITO_SECTION.search(block):
+            block = UC2_GABARITO_SECTION.split(block, maxsplit=1)[0]
+
+        parsed = _parse_kahoot_question_block(block)
+        if not parsed:
+            _warn(
+                warnings,
+                f"Pergunta {num} ignorada: enunciado, 4 opções (A-D) ou marcação "
+                "da correta ([X] / (Alternativa Correta)) incompletos.",
+            )
+            continue
+
+        q = {
+            "question": parsed["question"],
+            "options": parsed["options"],
+            "correct": gabarito.get(num, parsed["correct"]),
+        }
+        answer_key = parsed.get("answer_key", "")
+        if answer_key:
+            q["type"] = "choice_with_justify"
+            q["answer_key"] = answer_key
+        else:
+            q["type"] = "choice"
+        questions.append(q)
+
+    return questions
 
 
 def _parse_kahoot_questions(full_text: str, warnings: list | None = None) -> list:
@@ -319,6 +408,8 @@ def _parse_uc2_gabarito_table(full_text: str) -> dict[str, str]:
     tail = full_text[section.end() :] if section else full_text[-2500:]
     for num, letter in UC2_GABARITO_ROW.findall(tail):
         answers[num] = letter.upper()
+    for num, letter in MD_GABARITO_ROW.findall(tail):
+        answers.setdefault(num, letter.upper())
     return answers
 
 
@@ -354,20 +445,34 @@ def _parse_uc2_question_block(block: str, correct_letter: str | None) -> dict | 
         if mode == "question":
             question_lines.append(line)
         elif mode == "justify":
+            if UC2_GABARITO_SECTION.search(line):
+                break
             justify_parts.append(line)
 
-    opts = [o for o in options if o is not None]
+    clean_options: list[str] = []
+    inferred_correct: str | None = None
+    for j, opt in enumerate(options):
+        if opt is None:
+            continue
+        text = opt
+        if CORRECTA_MARK.search(text):
+            inferred_correct = chr(ord("A") + j)
+            text = CORRECTA_MARK.sub("", text).strip()
+        clean_options.append(_clean_text(text))
+
     question = _clean_text(" ".join(question_lines))
-    if len(options) != 4 or any(o is None or not o for o in options) or not question:
+    if len(clean_options) != 4 or any(not o for o in clean_options) or not question:
         return None
-    if not correct_letter or correct_letter.upper() not in "ABCD":
+
+    letter = (correct_letter or inferred_correct or "").upper()
+    if letter not in "ABCD":
         return None
 
     return {
         "type": "choice_with_justify",
         "question": question,
-        "options": [options[0], options[1], options[2], options[3]],
-        "correct": correct_letter.upper(),
+        "options": clean_options,
+        "correct": letter,
         "answer_key": _clean_text(" ".join(justify_parts)),
     }
 
@@ -403,15 +508,26 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
     Extrai questões de prova com gabarito.
     Tipos: choice, justify e choice_with_justify (formato UC2).
     """
-    # Formato UC2 (Atividade avaliativa) tem prioridade quando detectado.
-    if UC2_QUESTAO_HEADER.search(full_text) or "Justificativa:" in full_text:
+    # Formato Kahoot/Markdown (## Pergunta N + [X] + Justificativa).
+    if KAHOOT_HEADER.search(full_text):
+        kahoot_exam = _parse_kahoot_exam_questions(full_text, warnings)
+        if kahoot_exam:
+            return normalize_exam_questions(kahoot_exam)
+
+    # Formato UC2 (Questão N + a-d + Justificativa + GABARITO OFICIAL).
+    uc2_signals = UC2_QUESTAO_HEADER.search(full_text) and (
+        UC2_GABARITO_SECTION.search(full_text) or "Justificativa:" in full_text
+    )
+    if uc2_signals:
         uc2 = _parse_uc2_exam_questions(full_text, warnings)
-        if uc2 or UC2_QUESTAO_HEADER.search(full_text):
-            # Não cair no parser Markdown (evita mensagens enganosas de "Resposta Correta").
-            return uc2
+        if uc2:
+            return normalize_exam_questions(uc2)
 
     matches = list(PERGUNTA_HEADER.finditer(full_text))
     if not matches:
+        kahoot_exam = _parse_kahoot_exam_questions(full_text, warnings)
+        if kahoot_exam:
+            return normalize_exam_questions(kahoot_exam)
         kahoot = _parse_kahoot_questions(full_text, warnings)
         if kahoot:
             return [{"type": "choice", **q} for q in kahoot]
@@ -420,6 +536,7 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
             return md
         return _parse_uc2_exam_questions(full_text, warnings)
 
+    gabarito_table = _parse_uc2_gabarito_table(full_text)
     questions = []
 
     for i, match in enumerate(matches):
@@ -427,11 +544,14 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
         block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
         block = full_text[match.start() : block_end]
         header_end = match.end() - match.start()
+        body = block[header_end:]
 
         parsed = None
-        if _is_justify_block(block, header_end):
+        if UC2_OPTION_LINE.search(body) or UC2_JUSTIFICATIVA_LINE.search(body):
+            parsed = _parse_uc2_question_block(body, gabarito_table.get(num))
+        if not parsed and _is_justify_block(block, header_end):
             parsed = _parse_justify_block(block, header_end)
-        else:
+        if not parsed:
             parsed = _parse_choice_block(block, header_end)
             if not parsed and GABARITO_LINE.search(block):
                 parsed = _parse_justify_block(block, header_end)
@@ -445,7 +565,7 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
                 "(múltipla escolha com 4 alternativas e CORRETA, ou justificativa com gabarito).",
             )
 
-    return questions
+    return normalize_exam_questions(questions)
 
 
 def parse_questions_from_text(full_text: str, warnings: list | None = None) -> list:
@@ -483,9 +603,46 @@ def parse_questions_from_text(full_text: str, warnings: list | None = None) -> l
     return questions
 
 
+def normalize_exam_question(q: dict) -> dict:
+    """Garante tipo correto ao salvar/carregar (ex.: provas importadas antes da correção)."""
+    if not q or not q.get("options"):
+        return q
+    if q.get("type") == "justify" or "options" not in q:
+        return q
+    if q.get("answer_key") or q.get("type") == "choice_with_justify":
+        normalized = {**q, "type": "choice_with_justify"}
+        if not normalized.get("answer_key"):
+            normalized["answer_key"] = ""
+        return normalized
+    if q.get("type") in (None, "choice") and q.get("correct"):
+        return {**q, "type": "choice"}
+    return q
+
+
+def normalize_exam_questions(questions: list) -> list:
+    return [normalize_exam_question(q) for q in questions]
+
+
+def exam_question_needs_justify(q: dict) -> bool:
+    """Questão de prova que exige justificativa além da alternativa marcada."""
+    q = normalize_exam_question(q)
+    if q.get("type") == "choice_with_justify":
+        return True
+    return bool(
+        q.get("type") in (None, "choice")
+        and q.get("answer_key")
+        and q.get("options")
+    )
+
+
+def exam_requires_justify(questions: list) -> bool:
+    """Prova com pelo menos uma questão que pede justificativa."""
+    return any(exam_question_needs_justify(q) for q in questions)
+
+
 def question_for_student(q: dict) -> dict:
     """Remove gabarito — visão do aluno."""
-    if q.get("type") == "choice_with_justify":
+    if exam_question_needs_justify(q):
         return {
             "type": "choice_with_justify",
             "question": q["question"],

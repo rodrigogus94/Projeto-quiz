@@ -13,7 +13,12 @@ from auto_grade import (
     summarize_answers,
 )
 from pdf_export import build_exam_pdf_bytes, export_filename
-from pdf_parser import exam_summary, question_for_student
+from pdf_parser import (
+    exam_question_needs_justify,
+    exam_requires_justify,
+    exam_summary,
+    question_for_student,
+)
 from quiz_storage import (
     add_exam_submission,
     exam_deadline_label,
@@ -800,20 +805,25 @@ def _render_exam_flow():
         total=total_q,
         student_name=st.session_state.current_student_name,
     )
-    has_composite = any(q.get("type") == "choice_with_justify" for q in exam["questions"])
-    if has_composite:
+    questions = exam["questions"]
+    needs_justify_exam = exam_requires_justify(questions)
+    if needs_justify_exam:
         st.caption(
-            "Marque a alternativa e justifique. A nota principal vem da múltipla escolha; "
-            "se errar, uma boa justificativa pode recuperar até metade do ponto da questão."
+            "Marque a alternativa e **justifique** cada resposta. A nota principal vem da "
+            "múltipla escolha; se errar, uma boa justificativa pode recuperar até metade do ponto."
         )
     else:
         st.caption("Responda todas as questões e envie ao final. O gabarito não é exibido.")
 
     with st.form("exam_submit_form"):
         answers_input = []
-        for i, q in enumerate(exam["questions"]):
+        for i, q in enumerate(questions):
             q_view = question_for_student(q)
-            if q_view["type"] == "choice_with_justify":
+            show_justify = (
+                q_view["type"] == "choice_with_justify"
+                or (needs_justify_exam and q_view["type"] == "choice")
+            )
+            if show_justify or q_view["type"] == "choice_with_justify":
                 tipo = "Múltipla escolha + justificativa"
             elif q_view["type"] == "choice":
                 tipo = "Múltipla escolha"
@@ -832,9 +842,9 @@ def _render_exam_flow():
                         options=list(opts.keys()),
                         format_func=lambda x: f"{x}) {opts[x]}",
                         key=f"exam_q_{i}_mc",
-                        label_visibility="collapsed",
+                        label_visibility="visible",
                     )
-                    if q_view["type"] == "choice_with_justify":
+                    if show_justify:
                         justify = st.text_area(
                             "Justifique sua resposta",
                             key=f"exam_q_{i}_justify",
@@ -855,7 +865,7 @@ def _render_exam_flow():
 
         if st.form_submit_button("📤 Enviar prova", type="primary", use_container_width=True):
             graded = []
-            for item, q_full in zip(answers_input, exam["questions"]):
+            for item, q_full in zip(answers_input, questions):
                 kind = item[0]
                 if kind == "choice":
                     graded.append(grade_choice_answer(item[1], q_full["correct"]))

@@ -357,8 +357,13 @@ def list_exams() -> list:
 
 
 def get_exam(exam_id: str) -> dict | None:
+    from pdf_parser import normalize_exam_questions
+
     for e in list_exams():
         if e["id"] == exam_id:
+            questions = normalize_exam_questions(e.get("questions") or [])
+            if questions != e.get("questions"):
+                e = {**e, "questions": questions}
             return e
     return None
 
@@ -445,11 +450,30 @@ def student_submission_for_exam(
     return matches[-1] if matches else None
 
 
+def repair_exams_questions() -> int:
+    """Atualiza questões salvas para o formato com justificativa, quando aplicável."""
+    from pdf_parser import normalize_exam_questions
+
+    store = load_exams_store()
+    fixed_count = 0
+    for exam in store.get("exams") or []:
+        original = exam.get("questions") or []
+        normalized = normalize_exam_questions(original)
+        if normalized != original:
+            exam["questions"] = normalized
+            fixed_count += 1
+    if fixed_count:
+        save_exams_store(store)
+    return fixed_count
+
+
 def create_exam(title: str, questions: list, deadline_at: str | None = None) -> dict:
+    from pdf_parser import normalize_exam_questions
+
     exam = {
         "id": str(uuid.uuid4()),
         "title": title.strip() or "Prova sem título",
-        "questions": questions,
+        "questions": normalize_exam_questions(questions),
         "created_at": datetime.now(timezone.utc).isoformat(),
         "deadline_at": deadline_at,
     }
