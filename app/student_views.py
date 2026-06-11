@@ -51,6 +51,7 @@ from app.charts import plot_student_result
 from app.components import (
     inject_student_area_css,
     render_classification_badge,
+    render_exam_mc_option,
     render_empty_state,
     render_flow_header,
     render_history_empty,
@@ -728,12 +729,17 @@ def _render_exam_questions_readonly(
             st.markdown(f"**Questão {i + 1}** · {tipo}")
             st.write(q_view["question"])
             if q_view["type"] in ("choice", "choice_with_justify"):
+                correct_letter = q.get("correct") if show_correction else None
+                selected = (ans or {}).get("selected")
                 for j, letter in enumerate("ABCD"):
                     opt = q_view["options"][j]
-                    marker = ""
-                    if ans and ans.get("selected") == letter:
-                        marker = " ← **sua resposta**"
-                    st.write(f"{letter}) {opt}{marker}")
+                    render_exam_mc_option(
+                        letter,
+                        opt,
+                        show_correction=show_correction,
+                        is_selected=selected == letter,
+                        is_correct=show_correction and letter == correct_letter,
+                    )
             if q_view["type"] == "choice_with_justify" and ans and ans.get("justify_text"):
                 st.markdown("**Sua justificativa:**")
                 st.write(ans["justify_text"])
@@ -742,10 +748,14 @@ def _render_exam_questions_readonly(
                 st.write(ans["text"])
             if show_correction and ans:
                 if ans.get("type") == "choice_with_justify":
-                    mc_txt = "✅ Múltipla escolha correta" if ans.get("mc_correct") else "❌ Múltipla escolha incorreta"
-                    st.caption(mc_txt)
-                    if not ans.get("mc_correct"):
+                    if ans.get("mc_correct"):
+                        st.success("✅ Múltipla escolha correta")
+                    else:
+                        st.error("❌ Múltipla escolha incorreta")
+                        st.caption("A alternativa correta está destacada em verde acima.")
                         render_classification_badge(ans.get("justify_classification", "NA"))
+                elif ans.get("type") == "choice":
+                    render_classification_badge(ans.get("classification", "NA"))
                 else:
                     render_classification_badge(ans.get("classification", "NA"))
 
@@ -914,11 +924,6 @@ def _render_exam_flow():
             st.session_state.current_exam_id = exam["id"]
             st.session_state.exam_mode = "done"
             st.rerun()
-
-    if st.button("Cancelar prova", type="secondary"):
-        _clear_exam_session()
-        st.rerun()
-
 
 def _reload_exam_submission(result: dict | None) -> dict | None:
     """Atualiza envio da sessão com dados persistidos (ex.: correção liberada)."""

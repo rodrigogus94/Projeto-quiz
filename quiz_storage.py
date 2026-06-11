@@ -3,9 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import uuid
-from datetime import datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+
+BRASILIA_TZ = timezone(timedelta(hours=-3))
 
 DATA_DIR = Path(__file__).parent / "data"
 MATERIALS_PATH = DATA_DIR / "materials.json"
@@ -394,13 +397,71 @@ def toggle_exam_active(exam_id: str) -> bool:
     return active
 
 
+def parse_deadline_date_br(text: str) -> date | None:
+    """Interpreta data no formato DD/MM/AAAA (ou DD/MM/AA)."""
+    clean = (text or "").strip()
+    if not clean:
+        return None
+    for fmt in ("%d/%m/%Y", "%d/%m/%y"):
+        try:
+            return datetime.strptime(clean, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def parse_deadline_time_br(text: str) -> time | None:
+    """Interpreta hora no formato HH:MM (24h)."""
+    clean = (text or "").strip()
+    match = re.fullmatch(r"(\d{1,2}):(\d{2})", clean)
+    if not match:
+        return None
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if 0 <= hour <= 23 and 0 <= minute <= 59:
+        return time(hour, minute)
+    return None
+
+
+def format_deadline_br(value: str | datetime | None) -> str | None:
+    """Formata prazo para exibição em Brasília (DD/MM/AAAA HH:MM)."""
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        dt = _parse_iso_datetime(value if isinstance(value, str) else None)
+    if not dt:
+        return None
+    local = dt.astimezone(BRASILIA_TZ)
+    return local.strftime("%d/%m/%Y %H:%M")
+
+
+def exam_deadline_parts(exam: dict) -> tuple[str, str]:
+    """Retorna (data, hora) do prazo em Brasília para preencher formulários."""
+    dt = exam_deadline_dt(exam)
+    if not dt:
+        return "", "23:59"
+    local = dt.astimezone(BRASILIA_TZ)
+    return local.strftime("%d/%m/%Y"), local.strftime("%H:%M")
+
+
+def build_deadline_from_br_strings(
+    date_text: str, time_text: str
+) -> tuple[str | None, str | None]:
+    """Valida DD/MM/AAAA + HH:MM (Brasília) e retorna (ISO UTC, mensagem de erro)."""
+    deadline_date = parse_deadline_date_br(date_text)
+    if not deadline_date:
+        return None, "Data inválida. Use o formato DD/MM/AAAA (ex.: 15/06/2026)."
+    deadline_time = parse_deadline_time_br(time_text)
+    if not deadline_time:
+        return None, "Hora inválida. Digite no formato HH:MM (ex.: 22:00)."
+    return build_deadline_iso(deadline_date, deadline_time), None
+
+
 def build_deadline_iso(deadline_date, deadline_time=None) -> str | None:
     """Combina data/hora informadas pelo professor (Brasília UTC-3) em ISO UTC."""
     if not deadline_date:
         return None
-    br_tz = timezone(timedelta(hours=-3))
     t = deadline_time or time(23, 59)
-    dt = datetime.combine(deadline_date, t, tzinfo=br_tz)
+    dt = datetime.combine(deadline_date, t, tzinfo=BRASILIA_TZ)
     return dt.astimezone(timezone.utc).isoformat()
 
 
@@ -428,10 +489,7 @@ def exam_is_past_deadline(exam: dict, *, now: datetime | None = None) -> bool:
 
 
 def exam_deadline_label(exam: dict) -> str | None:
-    deadline = exam_deadline_dt(exam)
-    if not deadline:
-        return None
-    return deadline.astimezone(timezone.utc).strftime("%d/%m/%Y %H:%M UTC")
+    return format_deadline_br(exam.get("deadline_at"))
 
 
 def student_submission_for_exam(

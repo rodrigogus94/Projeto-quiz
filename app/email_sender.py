@@ -135,6 +135,73 @@ def send_results_email(
     return None
 
 
+def send_corrected_exam_email(
+    *,
+    student_name: str,
+    student_email: str,
+    exam_title: str,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+) -> str | None:
+    """Envia ao aluno o PDF da prova corrigida (após devolução pelo professor)."""
+    cfg = _email_secrets()
+    to_addr = (student_email or "").strip().lower()
+    if not to_addr:
+        return "O aluno não possui e-mail cadastrado."
+    if not smtp_configured():
+        return (
+            "Envio automático não configurado. Defina a seção [email] nos secrets do app."
+        )
+
+    msg = EmailMessage()
+    msg["Subject"] = f"[Projeto Quiz] Prova corrigida — {exam_title}"
+    msg["From"] = (cfg.get("from") or cfg["username"]).strip()
+    msg["To"] = to_addr
+    msg.set_content(
+        "\n".join(
+            [
+                f"Olá, {student_name}!",
+                "",
+                f"Sua prova \"{exam_title}\" foi corrigida e está disponível no app.",
+                "Em anexo segue o PDF com suas respostas e a correção.",
+                "",
+                "Acesse a área do aluno → Provas → Ver prova enviada para ver os detalhes.",
+            ]
+        )
+    )
+    msg.add_attachment(
+        pdf_bytes,
+        maintype="application",
+        subtype="pdf",
+        filename=pdf_filename,
+    )
+
+    host = (cfg.get("smtp_host") or "smtp.gmail.com").strip()
+    try:
+        port = int(cfg.get("smtp_port", 587))
+    except (TypeError, ValueError):
+        port = 587
+
+    try:
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=20) as server:
+                server.login(cfg["username"], cfg["password"])
+                server.send_message(msg)
+        else:
+            with smtplib.SMTP(host, port, timeout=20) as server:
+                server.starttls()
+                server.login(cfg["username"], cfg["password"])
+                server.send_message(msg)
+    except smtplib.SMTPAuthenticationError:
+        return (
+            "Falha de autenticação no servidor de e-mail. Para Gmail, use uma "
+            "senha de app (myaccount.google.com/apppasswords)."
+        )
+    except Exception as exc:
+        return f"Não foi possível enviar o e-mail: {exc}"
+    return None
+
+
 def mailto_link(student_name: str, student_email: str | None) -> str:
     """Link mailto pré-preenchido (fallback quando o envio automático não está ativo)."""
     subject = quote(_build_subject(student_name))

@@ -120,6 +120,55 @@ _STUDENT_AREA_CSS = """
 .kahoot-exam-q {
     padding: 0.25rem 0 0.5rem;
 }
+.kahoot-mc-option {
+    display: block;
+    padding: 0.55rem 0.85rem;
+    margin: 0.35rem 0;
+    border-radius: 8px;
+    border: 1px solid var(--kahoot-border);
+    font-size: 0.95rem;
+    line-height: 1.4;
+    color: var(--text-color);
+}
+.kahoot-mc-option--neutral {
+    background: color-mix(in srgb, var(--secondary-background-color) 35%, transparent);
+}
+.kahoot-mc-option--yours {
+    border-color: #3b82f6;
+    background: color-mix(in srgb, #3b82f6 12%, var(--background-color));
+    font-weight: 600;
+}
+.kahoot-mc-option--correct {
+    border-color: #16a34a;
+    background: color-mix(in srgb, #16a34a 14%, var(--background-color));
+    font-weight: 600;
+}
+.kahoot-mc-option--wrong {
+    border-color: #dc2626;
+    background: color-mix(in srgb, #dc2626 10%, var(--background-color));
+    font-weight: 600;
+}
+.kahoot-mc-tag {
+    display: inline-block;
+    margin-left: 0.5rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    vertical-align: middle;
+}
+.kahoot-mc-tag--yours { background: #3b82f6; color: #fff; }
+.kahoot-mc-tag--correct { background: #16a34a; color: #fff; }
+.kahoot-mc-tag--wrong { background: #dc2626; color: #fff; }
+.kahoot-import-flash {
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+    border-radius: 10px;
+    border: 1px solid var(--kahoot-alert-success-border);
+    background: var(--kahoot-alert-success-bg);
+    color: var(--kahoot-alert-success-text);
+    font-weight: 600;
+}
 .kahoot-history-item {
     display: flex;
     justify-content: space-between;
@@ -287,6 +336,43 @@ def render_history_item(
 def render_history_empty(message: str) -> None:
     st.markdown(
         f'<div class="kahoot-history-empty">{message}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_import_flash(message: str) -> None:
+    st.markdown(f'<div class="kahoot-import-flash">✅ {message}</div>', unsafe_allow_html=True)
+
+
+def render_exam_mc_option(
+    letter: str,
+    text: str,
+    *,
+    show_correction: bool = False,
+    is_selected: bool = False,
+    is_correct: bool = False,
+) -> None:
+    """Exibe alternativa de prova com destaque visual (sua resposta / gabarito)."""
+    css = "kahoot-mc-option--neutral"
+    tags: list[str] = []
+    if show_correction:
+        if is_correct and is_selected:
+            css = "kahoot-mc-option--correct"
+            tags.append('<span class="kahoot-mc-tag kahoot-mc-tag--correct">✓ Sua resposta — correta</span>')
+        elif is_correct:
+            css = "kahoot-mc-option--correct"
+            tags.append('<span class="kahoot-mc-tag kahoot-mc-tag--correct">✓ Alternativa correta</span>')
+        elif is_selected:
+            css = "kahoot-mc-option--wrong"
+            tags.append('<span class="kahoot-mc-tag kahoot-mc-tag--wrong">✗ Sua escolha</span>')
+    elif is_selected:
+        css = "kahoot-mc-option--yours"
+        tags.append('<span class="kahoot-mc-tag kahoot-mc-tag--yours">Sua resposta</span>')
+
+    tag_html = "".join(tags)
+    st.markdown(
+        f'<div class="kahoot-mc-option {css}">'
+        f"<strong>{letter})</strong> {text}{tag_html}</div>",
         unsafe_allow_html=True,
     )
 

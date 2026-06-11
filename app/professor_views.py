@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import time
 from pathlib import Path
 
 import pandas as pd
@@ -17,7 +16,8 @@ from pdf_export import build_exam_pdf_bytes, export_filename
 from pdf_parser import exam_summary
 from quiz_storage import (
     add_student,
-    build_deadline_iso,
+    build_deadline_from_br_strings,
+    exam_deadline_parts,
     clear_leaderboard_for_material,
     create_exam,
     exam_deadline_label,
@@ -61,7 +61,8 @@ from app.charts import (
     plot_score_distribution,
 )
 from app.session import QUIZ_SECOND_CHANCE_MIN_SCORE
-from app.components import render_classification_badge
+from app.components import render_classification_badge, render_import_flash
+from app.email_sender import send_corrected_exam_email, smtp_configured
 from app.constants import EMPTY_QUESTION, EXAM_FORMAT_HELP
 from app.pdf_helpers import (
     UPLOAD_FILE_TYPES,
@@ -232,7 +233,25 @@ def render_exam_question_preview(questions: list, show_gabarito: bool = True):
             st.caption(f"Gabarito: {q.get('answer_key') or '(não informado)'}")
 
 
+def _bump_upload_widget(widget_base: str) -> None:
+    """Incrementa a chave do file_uploader para limpar o arquivo após importação."""
+    key = f"{widget_base}_rev"
+    st.session_state[key] = st.session_state.get(key, 0) + 1
+
+
+def _upload_widget_key(widget_base: str) -> str:
+    return f"{widget_base}_{st.session_state.get(f'{widget_base}_rev', 0)}"
+
+
 def render_exams_tab():
+    exam_flash = st.session_state.pop("exam_import_flash", None)
+    release_flash = st.session_state.pop("exam_release_flash", None)
+    if exam_flash:
+        render_import_flash(exam_flash)
+        st.toast("✅ Prova importada com sucesso!")
+    if release_flash:
+        st.success(release_flash)
+
     st.subheader("Provas (PDF ou Markdown com gabarito)")
     st.caption("O gabarito fica só com o professor. Os alunos veem apenas as questões.")
     with st.expander("📋 Formato esperado do arquivo"):
@@ -255,26 +274,41 @@ def render_exams_tab():
     uploaded = st.file_uploader(
         "Arquivo da prova (PDF ou Markdown, com gabarito)",
         type=UPLOAD_FILE_TYPES,
-        key="exam_pdf",
+        key=_upload_widget_key("exam_pdf"),
     )
     use_deadline = st.checkbox("Definir prazo de entrega", key="exam_use_deadline")
     deadline_at = None
+    dl_date_text = ""
+    dl_time_text = "23:59"
     if use_deadline:
         dl_col1, dl_col2 = st.columns(2)
         with dl_col1:
-            dl_date = st.date_input("Data limite", key="exam_dl_date")
-        with dl_col2:
-            dl_time = st.time_input(
-                "Hora limite (Brasília)",
-                value=time(23, 59),
-                key="exam_dl_time",
+            dl_date_text = st.text_input(
+                "Data limite",
+                placeholder="DD/MM/AAAA",
+                key="exam_dl_date_text",
             )
-        deadline_at = build_deadline_iso(dl_date, dl_time)
-        st.caption("Após o prazo, o aluno só pode **revisar** a prova — não enviar respostas.")
+        with dl_col2:
+            dl_time_text = st.text_input(
+                "Hora limite (Brasília)",
+                value="23:59",
+                placeholder="HH:MM (ex.: 22:00)",
+                key="exam_dl_time_text",
+            )
+        st.caption(
+            "Use **DD/MM/AAAA** e **HH:MM** no horário de Brasília. "
+            "Após o prazo, o aluno só pode **revisar** a prova."
+        )
 
     if st.button("📄 Importar prova", type="primary") and uploaded and new_title.strip():
         questions = parse_exam_from_upload(uploaded)
         if questions:
+            deadline_at = None
+            if use_deadline:
+                deadline_at, dl_err = build_deadline_from_br_strings(dl_date_text, dl_time_text)
+                if dl_err:
+                    st.error(dl_err)
+                    return
             create_exam(new_title.strip(), questions, deadline_at=deadline_at)
             summary = exam_summary(questions)
             composite = summary.get("composite", 0)
@@ -283,8 +317,11 @@ def render_exams_tab():
                 f"({summary['choice']} múltipla escolha, {summary['justify']} justificativas)."
             )
             if composite:
-                msg += f" **{composite}** com campo de justificativa para o aluno."
-            st.success(msg)
+                msg += f" ({composite} com justificativa para o aluno)"
+            st.session_state.exam_import_flash = msg
+            _bump_upload_widget("exam_pdf")
+            if "exam_title" in st.session_state:
+                st.session_state.exam_title = ""
             st.rerun()
         else:
             st.error("Nenhuma questão identificada. Verifique o formato do arquivo.")
@@ -332,22 +369,32 @@ def render_exams_tab():
                 value=has_dl,
                 key=f"exam_has_dl_{ex['id']}",
             )
+            default_date, default_time = exam_deadline_parts(ex)
             new_deadline = None
             if set_dl:
                 ec1, ec2 = st.columns(2)
                 with ec1:
-                    ed_date = st.date_input(
+                    ed_date_text = st.text_input(
                         "Data limite",
+                        value=default_date,
+                        placeholder="DD/MM/AAAA",
                         key=f"exam_ed_date_{ex['id']}",
                     )
                 with ec2:
-                    ed_time = st.time_input(
+                    ed_time_text = st.text_input(
                         "Hora (Brasília)",
-                        value=time(23, 59),
+                        value=default_time,
+                        placeholder="HH:MM (ex.: 22:00)",
                         key=f"exam_ed_time_{ex['id']}",
                     )
-                new_deadline = build_deadline_iso(ed_date, ed_time)
             if st.button("💾 Salvar prazo", key=f"exam_save_dl_{ex['id']}"):
+                if set_dl:
+                    new_deadline, dl_err = build_deadline_from_br_strings(
+                        ed_date_text, ed_time_text
+                    )
+                    if dl_err:
+                        st.error(dl_err)
+                        return
                 update_exam_deadline(ex["id"], new_deadline if set_dl else None)
                 st.success("Prazo atualizado.")
                 st.rerun()
@@ -493,12 +540,38 @@ def render_exams_tab():
                     set_exam_correction_released(sub["id"], False)
                     st.rerun()
             elif st.button(
-                "📬 Devolver prova corrigida ao aluno",
+                "📬 Devolver prova corrigida e enviar PDF por e-mail",
                 type="primary",
                 key=f"release_corr_{sub['id']}",
             ):
                 set_exam_correction_released(sub["id"], True)
-                st.success(f"Correção liberada para **{sub['student_name']}**.")
+                flash_parts = [f"Correção liberada para {sub['student_name']}."]
+                student_email = (sub.get("student_email") or "").strip().lower()
+                if student_email and smtp_configured() and corr_exam:
+                    pdf_bytes = build_exam_pdf_bytes(
+                        corr_exam, sub, include_gabarito=False, include_correction=True
+                    )
+                    mail_err = send_corrected_exam_email(
+                        student_name=sub["student_name"],
+                        student_email=student_email,
+                        exam_title=corr_exam.get("title", "Prova"),
+                        pdf_bytes=pdf_bytes,
+                        pdf_filename=export_filename(corr_exam, sub),
+                    )
+                    if mail_err:
+                        flash_parts.append(f"E-mail não enviado: {mail_err}")
+                    else:
+                        flash_parts.append(f"PDF enviado para {student_email}.")
+                elif not student_email:
+                    flash_parts.append(
+                        "Aluno sem e-mail Google — correção visível só no app."
+                    )
+                elif not smtp_configured():
+                    flash_parts.append(
+                        "E-mail não configurado — correção visível só no app."
+                    )
+                st.session_state.exam_release_flash = " ".join(flash_parts)
+                st.toast("📬 Prova devolvida ao aluno")
                 st.rerun()
 
             st.download_button(
@@ -797,6 +870,11 @@ def render_results_tab(materials: list):
 def render_professor_panel():
     st.title("👨‍🏫 Painel do Professor")
 
+    quiz_flash = st.session_state.pop("quiz_import_flash", None)
+    if quiz_flash:
+        render_import_flash(quiz_flash)
+        st.toast("✅ Quiz importado com sucesso!")
+
     current_user = st.session_state.get("current_user") or {}
     show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
         current_user.get("is_admin")
@@ -813,7 +891,7 @@ def render_professor_panel():
         uploaded = st.file_uploader(
             "Importar perguntas (PDF, .md ou .markdown)",
             type=UPLOAD_FILE_TYPES,
-            key="prof_pdf",
+            key=_upload_widget_key("prof_pdf"),
         )
 
         col_a, col_b = st.columns(2)
@@ -826,8 +904,12 @@ def render_professor_panel():
             if st.button("📄 Criar a partir do arquivo") and uploaded and new_title.strip():
                 questions = parse_questions_from_upload(uploaded)
                 if questions:
-                    create_material(new_title.strip(), questions)
-                    st.success(f"Material criado com {len(questions)} perguntas.")
+                    title = new_title.strip()
+                    create_material(title, questions)
+                    st.session_state.quiz_import_flash = (
+                        f"Quiz \"{title}\" criado com {len(questions)} perguntas."
+                    )
+                    _bump_upload_widget("prof_pdf")
                     st.rerun()
                 else:
                     st.error("Não foi possível extrair perguntas do arquivo.")
@@ -893,13 +975,16 @@ def render_professor_panel():
             pdf_update = st.file_uploader(
                 "Substituir todas as perguntas via PDF ou Markdown",
                 type=UPLOAD_FILE_TYPES,
-                key="prof_pdf_replace",
+                key=_upload_widget_key("prof_pdf_replace"),
             )
             if pdf_update and st.button("Importar arquivo neste material"):
                 parsed = parse_questions_from_upload(pdf_update)
                 if parsed:
                     update_material(material_id, title, parsed)
-                    st.success(f"{len(parsed)} perguntas importadas.")
+                    st.session_state.quiz_import_flash = (
+                        f"{len(parsed)} perguntas importadas em \"{title}\"."
+                    )
+                    _bump_upload_widget("prof_pdf_replace")
                     st.rerun()
 
             edited = render_question_editor(questions, key_prefix=f"mat_{material_id}")
