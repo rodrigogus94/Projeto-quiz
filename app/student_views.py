@@ -27,6 +27,7 @@ from quiz_storage import (
     get_active_materials,
     get_exam,
     get_material,
+    exam_correction_released,
     load_exam_submissions,
     load_leaderboard,
     student_submission_for_exam,
@@ -706,7 +707,12 @@ def _render_quiz_results():
             st.rerun()
 
 
-def _render_exam_questions_readonly(exam: dict, submission: dict | None = None):
+def _render_exam_questions_readonly(
+    exam: dict,
+    submission: dict | None = None,
+    *,
+    show_correction: bool = False,
+):
     """Exibe questões sem permitir edição (revisão após o prazo ou prova enviada)."""
     answers = (submission or {}).get("answers") or []
     for i, q in enumerate(exam["questions"]):
@@ -734,6 +740,14 @@ def _render_exam_questions_readonly(exam: dict, submission: dict | None = None):
             elif q_view["type"] == "justify" and ans and ans.get("text"):
                 st.markdown("**Sua resposta:**")
                 st.write(ans["text"])
+            if show_correction and ans:
+                if ans.get("type") == "choice_with_justify":
+                    mc_txt = "✅ Múltipla escolha correta" if ans.get("mc_correct") else "❌ Múltipla escolha incorreta"
+                    st.caption(mc_txt)
+                    if not ans.get("mc_correct"):
+                        render_classification_badge(ans.get("justify_classification", "NA"))
+                else:
+                    render_classification_badge(ans.get("classification", "NA"))
 
 
 def _render_exam_review():
@@ -893,6 +907,7 @@ def _render_exam_flow():
                 "answers": graded,
                 "summary": summary,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
+                "correction_released": False,
             }
             add_exam_submission(submission)
             st.session_state.exam_submission_result = submission
@@ -905,34 +920,72 @@ def _render_exam_flow():
         st.rerun()
 
 
+def _reload_exam_submission(result: dict | None) -> dict | None:
+    """Atualiza envio da sessão com dados persistidos (ex.: correção liberada)."""
+    if not result:
+        return None
+    exam_id = result.get("exam_id")
+    if not exam_id:
+        return result
+    fresh = student_submission_for_exam(
+        result.get("student_name", ""),
+        exam_id,
+        result.get("student_email"),
+    )
+    if fresh:
+        st.session_state.exam_submission_result = fresh
+        return fresh
+    return result
+
+
 def _render_exam_results(*, read_only: bool = False):
-    result = st.session_state.exam_submission_result
+    result = _reload_exam_submission(st.session_state.exam_submission_result)
     if not result:
         st.warning("Nenhum envio encontrado para esta prova.")
         return
 
+    released = exam_correction_released(result)
     title = (
         f"Prova enviada, {result['student_name']}!"
         if not read_only
         else f"Prova enviada — {result['student_name']}"
     )
-    msg = (
-        "Suas respostas foram registradas. A correção ficará disponível apenas para o professor."
-        if not read_only
-        else "Modo somente leitura — você pode consultar o que enviou, sem alterar as respostas."
-    )
+    if released:
+        summary = result.get("summary") or summarize_answers(result.get("answers") or [])
+        msg = (
+            f"Correção liberada pelo professor — "
+            f"nota: {summary['total_points']:.1f}/{summary['max_points']:.0f} "
+            f"({summary['percent']:.0f}%)"
+        )
+    elif not read_only:
+        msg = (
+            "Suas respostas foram registradas. A correção ficará disponível "
+            "quando o professor devolver a prova."
+        )
+    else:
+        msg = (
+            "Modo somente leitura — você pode consultar o que enviou. "
+            "A correção ainda não foi liberada pelo professor."
+        )
     render_result_banner(title, msg)
+    if not released:
+        st.info("⏳ Aguardando correção do professor. Você verá acertos e notas após a devolução.")
 
     exam_for_view = get_exam(result.get("exam_id"))
     if exam_for_view:
-        st.subheader("Suas respostas")
-        _render_exam_questions_readonly(exam_for_view, result)
+        st.subheader("Suas respostas" if not released else "Prova corrigida")
+        _render_exam_questions_readonly(exam_for_view, result, show_correction=released)
 
     exam_for_pdf = get_exam(result.get("exam_id"))
     if exam_for_pdf:
         st.download_button(
             "📥 Baixar minha prova em PDF",
-            data=build_exam_pdf_bytes(exam_for_pdf, result, include_gabarito=False),
+            data=build_exam_pdf_bytes(
+                exam_for_pdf,
+                result,
+                include_gabarito=False,
+                include_correction=released,
+            ),
             file_name=export_filename(exam_for_pdf, result),
             mime="application/pdf",
             key="student_download_exam_pdf",

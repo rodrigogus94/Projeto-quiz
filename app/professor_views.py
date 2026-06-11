@@ -39,6 +39,8 @@ from quiz_storage import (
     load_students,
     purge_student_results,
     student_quiz_stats,
+    exam_correction_released,
+    set_exam_correction_released,
     submissions_for_exam,
     toggle_exam_active,
     toggle_material_active,
@@ -383,7 +385,9 @@ def render_exams_tab():
     with dl1:
         st.download_button(
             "📥 PDF — respostas do aluno",
-            data=build_exam_pdf_bytes(corr_exam, pick_sub, include_gabarito=False),
+            data=build_exam_pdf_bytes(
+                corr_exam, pick_sub, include_gabarito=False, include_correction=True
+            ),
             file_name=export_filename(corr_exam, pick_sub),
             mime="application/pdf",
             key="export_student_pdf",
@@ -479,9 +483,29 @@ def render_exams_tab():
                 st.success("Revisão salva.")
                 st.rerun()
 
+            released = exam_correction_released(sub)
+            if released:
+                st.success("📬 Correção já liberada para o aluno.")
+                if st.button(
+                    "🔒 Ocultar correção do aluno",
+                    key=f"hide_corr_{sub['id']}",
+                ):
+                    set_exam_correction_released(sub["id"], False)
+                    st.rerun()
+            elif st.button(
+                "📬 Devolver prova corrigida ao aluno",
+                type="primary",
+                key=f"release_corr_{sub['id']}",
+            ):
+                set_exam_correction_released(sub["id"], True)
+                st.success(f"Correção liberada para **{sub['student_name']}**.")
+                st.rerun()
+
             st.download_button(
                 "📥 Baixar PDF deste aluno",
-                data=build_exam_pdf_bytes(corr_exam, sub, include_gabarito=False),
+                data=build_exam_pdf_bytes(
+                    corr_exam, sub, include_gabarito=False, include_correction=True
+                ),
                 file_name=export_filename(corr_exam, sub),
                 mime="application/pdf",
                 key=f"dl_sub_{sub['id']}",

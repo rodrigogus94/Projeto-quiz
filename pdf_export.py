@@ -107,8 +107,14 @@ def _format_date(iso: str) -> str:
 
 
 def build_exam_lines(
-    exam: dict, submission: dict, include_gabarito: bool = False
+    exam: dict,
+    submission: dict,
+    include_gabarito: bool = False,
+    *,
+    include_correction: bool | None = None,
 ) -> list[str]:
+    if include_correction is None:
+        include_correction = bool(submission.get("correction_released"))
     lines = [
         f"PROVA: {exam.get('title', 'Prova')}",
         f"Aluno: {submission.get('student_name', '')}",
@@ -116,7 +122,7 @@ def build_exam_lines(
         "",
     ]
     summary = submission.get("summary")
-    if summary:
+    if include_correction and summary:
         c = summary.get("counts", {})
         lines.append(
             f"Resultado: A={c.get('A', 0)} | PA={c.get('PA', 0)} | NA={c.get('NA', 0)} "
@@ -145,28 +151,36 @@ def build_exam_lines(
                 lines.append(
                     f"Justificativa do aluno: {ans.get('justify_text', '').strip() or '(sem resposta)'}"
                 )
-                mc_ok = "Correta" if ans.get("mc_correct") else "Incorreta"
-                lines.append(f"MC: {mc_ok} | Pontos: {ans.get('points', 0):.1f}")
-                if not ans.get("mc_correct"):
-                    lines.append(
-                        f"Classificação da justificativa: {ans.get('justify_classification', clf)}"
-                    )
-            else:
+                if include_correction:
+                    mc_ok = "Correta" if ans.get("mc_correct") else "Incorreta"
+                    lines.append(f"MC: {mc_ok} | Pontos: {ans.get('points', 0):.1f}")
+                    if not ans.get("mc_correct"):
+                        lines.append(
+                            f"Classificação da justificativa: {ans.get('justify_classification', clf)}"
+                        )
+            elif include_correction:
                 lines.append(f"Classificação: {clf}")
         else:
             lines.append(f"Pergunta {num}: {q['question']} (JUSTIFICATIVA)")
             lines.append(f"Resposta do aluno: {ans.get('text', '').strip() or '(sem resposta)'}")
             if include_gabarito and q.get("answer_key"):
                 lines.append(f"Gabarito: {q['answer_key']}")
-            lines.append(f"Classificação: {clf}")
+            if include_correction:
+                lines.append(f"Classificação: {clf}")
         lines.append("")
 
     return lines
 
 
 def build_exam_pdf_bytes(
-    exam: dict, submission: dict, include_gabarito: bool = False
+    exam: dict,
+    submission: dict,
+    include_gabarito: bool = False,
+    *,
+    include_correction: bool | None = None,
 ) -> bytes:
+    if include_correction is None:
+        include_correction = bool(submission.get("correction_released"))
     pdf = FPDF()
     pdf.set_margins(18, 18, 18)
     pdf.set_auto_page_break(auto=True, margin=18)
@@ -181,7 +195,7 @@ def build_exam_pdf_bytes(
     )
 
     summary = submission.get("summary")
-    if summary:
+    if include_correction and summary:
         c = summary.get("counts", {})
         _write_line(
             pdf,
@@ -235,19 +249,20 @@ def build_exam_pdf_bytes(
             if include_gabarito and q.get("answer_key"):
                 _write_line(pdf, font, "B", 10, f"Gabarito: {q['answer_key']}", h=5)
 
-        if q.get("type") == "choice_with_justify":
-            mc_ok = "Correta" if ans.get("mc_correct") else "Incorreta"
-            _write_line(
-                pdf,
-                font,
-                "B",
-                10,
-                f"MC: {mc_ok} | Justificativa: {ans.get('justify_classification', clf)} | "
-                f"Pontos: {ans.get('points', 0):.1f}",
-                h=5,
-            )
-        else:
-            _write_line(pdf, font, "B", 10, f"Classificação: {clf}", h=5)
+        if include_correction:
+            if q.get("type") == "choice_with_justify":
+                mc_ok = "Correta" if ans.get("mc_correct") else "Incorreta"
+                _write_line(
+                    pdf,
+                    font,
+                    "B",
+                    10,
+                    f"MC: {mc_ok} | Justificativa: {ans.get('justify_classification', clf)} | "
+                    f"Pontos: {ans.get('points', 0):.1f}",
+                    h=5,
+                )
+            elif q.get("type") in ("choice", "justify"):
+                _write_line(pdf, font, "B", 10, f"Classificação: {clf}", h=5)
         pdf.ln(3)
 
     raw = pdf.output()

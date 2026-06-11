@@ -35,13 +35,17 @@ class TestPdfExport(unittest.TestCase):
     }
 
     def test_lines_include_student_and_answers(self):
-        text = "\n".join(build_exam_lines(self.EXAM, self.SUB))
+        text = "\n".join(build_exam_lines(self.EXAM, self.SUB, include_correction=True))
         self.assertIn("João Santos", text)
         self.assertIn("RESPOSTA DO ALUNO", text)
         self.assertIn("Sequência de passos", text)
 
+    def test_lines_hide_correction_until_released(self):
+        text = "\n".join(build_exam_lines(self.EXAM, self.SUB))
+        self.assertNotIn("Classificação:", text)
+
     def test_pdf_bytes_generated(self):
-        data = build_exam_pdf_bytes(self.EXAM, self.SUB)
+        data = build_exam_pdf_bytes(self.EXAM, self.SUB, include_correction=True)
         self.assertTrue(data.startswith(b"%PDF"))
 
     def test_filename(self):

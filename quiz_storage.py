@@ -545,7 +545,11 @@ def add_exam_submission(submission: dict) -> None:
 
 
 def update_exam_submission(
-    submission_id: str, answers: list, summary: dict | None = None
+    submission_id: str,
+    answers: list,
+    summary: dict | None = None,
+    *,
+    correction_released: bool | None = None,
 ) -> bool:
     submissions = load_exam_submissions()
     for s in submissions:
@@ -553,7 +557,32 @@ def update_exam_submission(
             s["answers"] = answers
             if summary is not None:
                 s["summary"] = summary
+            if correction_released is not None:
+                s["correction_released"] = correction_released
+                if correction_released:
+                    s["correction_released_at"] = datetime.now(timezone.utc).isoformat()
+                else:
+                    s.pop("correction_released_at", None)
             s["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_exam_submissions(submissions)
             return True
     return False
+
+
+def set_exam_correction_released(submission_id: str, released: bool = True) -> bool:
+    submissions = load_exam_submissions()
+    for s in submissions:
+        if s["id"] == submission_id:
+            s["correction_released"] = released
+            if released:
+                s["correction_released_at"] = datetime.now(timezone.utc).isoformat()
+            else:
+                s.pop("correction_released_at", None)
+            s["updated_at"] = datetime.now(timezone.utc).isoformat()
+            save_exam_submissions(submissions)
+            return True
+    return False
+
+
+def exam_correction_released(submission: dict | None) -> bool:
+    return bool((submission or {}).get("correction_released"))
