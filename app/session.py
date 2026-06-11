@@ -43,6 +43,7 @@ def init_session_state():
     auth_users.bootstrap_data_store()
     quiz_storage.repair_exams_questions()
     bootstrap_auth_config()
+    _migrate_legacy_nav_keys()
     defaults = {
         "role": None,
         "current_user": None,
@@ -64,13 +65,32 @@ def init_session_state():
         "exam_mode": "select",
         "exam_submission_result": None,
         "auth_view": "signup",
-        "professor_section": "materials",
-        "student_section": "quiz",
         "ui_theme": "system",
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def _migrate_legacy_nav_keys() -> None:
+    """Mantém a aba ativa ao atualizar versões que usavam keys antigas dos radios."""
+    if "professor_nav_section" not in st.session_state:
+        legacy = st.session_state.get("professor_section")
+        if legacy:
+            st.session_state.professor_nav_section = legacy
+    if "student_nav_section" not in st.session_state:
+        legacy = st.session_state.get("student_section")
+        if legacy:
+            st.session_state.student_nav_section = legacy
+
+
+def soft_reload_app() -> None:
+    """Recarrega dados e interface sem perder login nem seção da barra lateral."""
+    migrate_legacy_leaderboard()
+    auth_users.bootstrap_data_store()
+    quiz_storage.repair_exams_questions()
+    bootstrap_auth_config()
+    st.rerun()
 
 
 def _logout_requires_confirmation() -> bool:

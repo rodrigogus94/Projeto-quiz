@@ -66,6 +66,7 @@ from app.session import QUIZ_SECOND_CHANCE_MIN_SCORE
 from app.components import render_classification_badge, render_import_flash
 from app.email_sender import send_corrected_exam_email, smtp_configured
 from app.constants import EMPTY_QUESTION, EXAM_FORMAT_HELP
+from app.navigation import get_professor_section
 from app.pdf_helpers import (
     UPLOAD_FILE_TYPES,
     parse_exam_from_upload,
@@ -884,7 +885,7 @@ def render_professor_panel():
     show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
         current_user.get("is_admin")
     )
-    section = st.session_state.professor_section
+    section = get_professor_section()
 
     materials = list_materials()
     active_ids = set(get_active_material_ids())

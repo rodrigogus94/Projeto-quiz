@@ -47,6 +47,7 @@ from app.result_transfer import (
 )
 
 from app.auth_ui import render_student_register_form
+from app.navigation import get_student_section
 from app.charts import plot_student_result
 from app.components import (
     inject_student_area_css,
@@ -321,7 +322,7 @@ def _render_my_exam_history():
 
 def render_student_panel():
     inject_student_area_css()
-    section = st.session_state.student_section
+    section = get_student_section()
     section_label = "Quiz" if section == "quiz" else "Provas"
 
     st.title("👨‍🎓 Área do Aluno")

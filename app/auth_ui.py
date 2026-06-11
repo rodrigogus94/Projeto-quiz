@@ -18,6 +18,7 @@ from app.session import (
     _request_logout,
     login_user,
     logout,
+    soft_reload_app,
 )
 
 
@@ -65,7 +66,7 @@ def _render_account_settings_menu():
     ui_theme.render_theme_selector(compact=True)
     st.markdown('<span class="kahoot-menu-action-marker"></span>', unsafe_allow_html=True)
     if st.button("Recarregar aplicativo", key="account_menu_rerun", use_container_width=True):
-        st.rerun()
+        soft_reload_app()
 
 
 def _register_student_name(name: str) -> tuple[bool, str]:
