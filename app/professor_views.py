@@ -236,7 +236,7 @@ def render_exam_question_preview(questions: list, show_gabarito: bool = True):
 
 
 def _bump_upload_widget(widget_base: str) -> None:
-    """Incrementa a chave do file_uploader para limpar o arquivo após importação."""
+    """Incrementa a chave do widget para recriá-lo vazio após importação."""
     key = f"{widget_base}_rev"
     st.session_state[key] = st.session_state.get(key, 0) + 1
 
@@ -272,7 +272,11 @@ def render_exams_tab():
     exams = list_exams()
     active_ids = set(get_active_exam_ids())
 
-    new_title = st.text_input("Título da prova", placeholder="Ex.: Prova 1 — Lógica", key="exam_title")
+    new_title = st.text_input(
+        "Título da prova",
+        placeholder="Ex.: Prova 1 — Lógica",
+        key=_upload_widget_key("exam_title"),
+    )
     uploaded = st.file_uploader(
         "Arquivo da prova (PDF ou Markdown, com gabarito)",
         type=UPLOAD_FILE_TYPES,
@@ -323,8 +327,7 @@ def render_exams_tab():
                 msg += f" ({composite} com justificativa para o aluno)"
             st.session_state.exam_import_flash = msg
             _bump_upload_widget("exam_pdf")
-            if "exam_title" in st.session_state:
-                st.session_state.exam_title = ""
+            _bump_upload_widget("exam_title")
             st.rerun()
         else:
             st.error("Nenhuma questão identificada. Verifique o formato do arquivo.")
