@@ -16,8 +16,10 @@ from pdf_export import build_exam_pdf_bytes, export_filename
 from pdf_parser import exam_summary
 from quiz_storage import (
     add_student,
-    build_deadline_from_br_strings,
-    exam_deadline_parts,
+    build_deadline_from_inputs,
+    exam_deadline_date_value,
+    exam_deadline_time_text,
+    today_brasilia,
     clear_leaderboard_for_material,
     create_exam,
     exam_deadline_label,
@@ -278,15 +280,16 @@ def render_exams_tab():
     )
     use_deadline = st.checkbox("Definir prazo de entrega", key="exam_use_deadline")
     deadline_at = None
-    dl_date_text = ""
+    dl_date = None
     dl_time_text = "23:59"
     if use_deadline:
         dl_col1, dl_col2 = st.columns(2)
         with dl_col1:
-            dl_date_text = st.text_input(
+            dl_date = st.date_input(
                 "Data limite",
-                placeholder="DD/MM/AAAA",
-                key="exam_dl_date_text",
+                value=today_brasilia(),
+                format="DD/MM/YYYY",
+                key="exam_dl_date",
             )
         with dl_col2:
             dl_time_text = st.text_input(
@@ -296,7 +299,7 @@ def render_exams_tab():
                 key="exam_dl_time_text",
             )
         st.caption(
-            "Use **DD/MM/AAAA** e **HH:MM** no horário de Brasília. "
+            "Selecione a data no calendário e digite a hora em **HH:MM** (Brasília). "
             "Após o prazo, o aluno só pode **revisar** a prova."
         )
 
@@ -305,7 +308,7 @@ def render_exams_tab():
         if questions:
             deadline_at = None
             if use_deadline:
-                deadline_at, dl_err = build_deadline_from_br_strings(dl_date_text, dl_time_text)
+                deadline_at, dl_err = build_deadline_from_inputs(dl_date, dl_time_text)
                 if dl_err:
                     st.error(dl_err)
                     return
@@ -369,28 +372,27 @@ def render_exams_tab():
                 value=has_dl,
                 key=f"exam_has_dl_{ex['id']}",
             )
-            default_date, default_time = exam_deadline_parts(ex)
             new_deadline = None
             if set_dl:
                 ec1, ec2 = st.columns(2)
                 with ec1:
-                    ed_date_text = st.text_input(
+                    ed_date = st.date_input(
                         "Data limite",
-                        value=default_date,
-                        placeholder="DD/MM/AAAA",
+                        value=exam_deadline_date_value(ex) or today_brasilia(),
+                        format="DD/MM/YYYY",
                         key=f"exam_ed_date_{ex['id']}",
                     )
                 with ec2:
                     ed_time_text = st.text_input(
                         "Hora (Brasília)",
-                        value=default_time,
+                        value=exam_deadline_time_text(ex),
                         placeholder="HH:MM (ex.: 22:00)",
                         key=f"exam_ed_time_{ex['id']}",
                     )
             if st.button("💾 Salvar prazo", key=f"exam_save_dl_{ex['id']}"):
                 if set_dl:
-                    new_deadline, dl_err = build_deadline_from_br_strings(
-                        ed_date_text, ed_time_text
+                    new_deadline, dl_err = build_deadline_from_inputs(
+                        ed_date, ed_time_text
                     )
                     if dl_err:
                         st.error(dl_err)

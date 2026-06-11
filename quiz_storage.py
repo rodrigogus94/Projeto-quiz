@@ -434,13 +434,40 @@ def format_deadline_br(value: str | datetime | None) -> str | None:
     return local.strftime("%d/%m/%Y %H:%M")
 
 
-def exam_deadline_parts(exam: dict) -> tuple[str, str]:
-    """Retorna (data, hora) do prazo em Brasília para preencher formulários."""
+def today_brasilia() -> date:
+    return datetime.now(BRASILIA_TZ).date()
+
+
+def exam_deadline_date_value(exam: dict) -> date | None:
     dt = exam_deadline_dt(exam)
     if not dt:
-        return "", "23:59"
-    local = dt.astimezone(BRASILIA_TZ)
-    return local.strftime("%d/%m/%Y"), local.strftime("%H:%M")
+        return None
+    return dt.astimezone(BRASILIA_TZ).date()
+
+
+def exam_deadline_time_text(exam: dict) -> str:
+    dt = exam_deadline_dt(exam)
+    if not dt:
+        return "23:59"
+    return dt.astimezone(BRASILIA_TZ).strftime("%H:%M")
+
+
+def exam_deadline_parts(exam: dict) -> tuple[str, str]:
+    """Retorna (data, hora) do prazo em Brasília para preencher formulários."""
+    d = exam_deadline_date_value(exam)
+    return (d.strftime("%d/%m/%Y") if d else ""), exam_deadline_time_text(exam)
+
+
+def build_deadline_from_inputs(
+    deadline_date: date | None, time_text: str
+) -> tuple[str | None, str | None]:
+    """Valida data (calendário) + HH:MM digitado (Brasília)."""
+    if not deadline_date:
+        return None, "Selecione a data limite."
+    deadline_time = parse_deadline_time_br(time_text)
+    if not deadline_time:
+        return None, "Hora inválida. Digite no formato HH:MM (ex.: 22:00)."
+    return build_deadline_iso(deadline_date, deadline_time), None
 
 
 def build_deadline_from_br_strings(
