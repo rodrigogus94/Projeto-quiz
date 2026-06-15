@@ -6,15 +6,190 @@ import auth_users
 import quiz_storage
 from google_auth import google_oauth_configured, legacy_password_enabled
 from quiz_storage import update_professor_credentials
+from system_backup import (
+    auto_backup_info,
+    backup_bytes,
+    backup_filename,
+    backup_summary,
+    build_full_backup,
+    list_full_backups,
+    parse_full_backup,
+    read_full_backup_file,
+    read_latest_full_backup_bytes,
+    restore_full_backup,
+    run_auto_backup_if_due,
+    save_timestamped_full_backup,
+)
+
+
+def _render_full_system_backup():
+    st.subheader("Backup completo do sistema")
+    st.caption(
+        "Cada backup recebe **data e hora no nome do arquivo** e é salvo sem substituir os anteriores. "
+        "Também são criadas cópias dos arquivos de dados em `data/backups/snapshots/`. "
+        "Backups automáticos rodam a cada **6 horas**; os manuais ficam guardados para sempre."
+    )
+
+    info = auto_backup_info()
+    backups = list_full_backups()
+    if info.get("last_at"):
+        st.info(
+            f"Último backup automático: **{info['last_at'][:16].replace('T', ' ')} UTC** · "
+            f"**{info.get('history_count', 0)}** cópia(s) completas · "
+            f"**{info.get('snapshot_count', 0)}** snapshot(s) de dados · "
+            f"**{info.get('account_backup_count', 0)}** backup(s) de contas CSV"
+        )
+    else:
+        st.caption("Nenhum backup automático gerado ainda nesta sessão do servidor.")
+
+    payload = None
+    summary = {}
+    try:
+        payload = build_full_backup(source="manual")
+        summary = backup_summary(payload)
+    except Exception as exc:
+        st.warning(f"Não foi possível gerar o backup agora: {exc}")
+
+    dl_col, save_col, auto_col = st.columns(3, gap="medium")
+    with dl_col:
+        if payload:
+            st.download_button(
+                "📥 Baixar backup agora",
+                data=backup_bytes(payload),
+                file_name=backup_filename(),
+                mime="application/json",
+                key="download_full_backup",
+                use_container_width=True,
+            )
+            st.caption(
+                f"Materiais: {summary.get('materials', 0)} · Provas: {summary.get('exams', 0)} · "
+                f"Quizzes: {summary.get('quiz_results', 0)} · "
+                f"Envios: {summary.get('exam_submissions', 0)}"
+            )
+    with save_col:
+        if st.button(
+            "💾 Salvar backup datado no servidor",
+            key="save_manual_backup",
+            use_container_width=True,
+        ):
+            saved = save_timestamped_full_backup(source="manual")
+            st.success(f"Backup salvo: `{saved['filename']}`")
+            st.rerun()
+    with auto_col:
+        if st.button(
+            "🔄 Backup automático agora",
+            key="force_auto_backup",
+            use_container_width=True,
+        ):
+            if run_auto_backup_if_due(force=True):
+                st.success("Novo backup automático criado com data/hora.")
+            else:
+                st.info("Backup automático já estava em dia.")
+            st.rerun()
+
+    if backups:
+        st.markdown("#### Histórico de backups no servidor")
+        st.caption(
+            "Cada linha é um arquivo independente — restaurar um backup **não apaga** os demais."
+        )
+        for entry in backups[:20]:
+            cols = st.columns([3, 2, 2, 1])
+            source = entry.get("backup_source", "—")
+            source_label = "🤖 Auto" if source == "auto" else "👤 Manual"
+            when = (entry.get("generated_at") or entry.get("label") or "—")[:19].replace("T", " ")
+            summ = entry.get("summary") or {}
+            detail = (
+                f"Provas: {summ.get('exam_submissions', 0)} · "
+                f"Quizzes: {summ.get('quiz_results', 0)} · "
+                f"{entry.get('size_kb', 0)} KB"
+            )
+            with cols[0]:
+                st.write(f"`{entry['filename']}`")
+            with cols[1]:
+                st.caption(f"{source_label} · {when} UTC")
+            with cols[2]:
+                st.caption(detail)
+            with cols[3]:
+                raw = read_full_backup_file(entry["filename"])
+                if raw:
+                    st.download_button(
+                        "📥",
+                        data=raw,
+                        file_name=entry["filename"],
+                        mime="application/json",
+                        key=f"dl_hist_{entry['filename']}",
+                        help="Baixar esta cópia",
+                    )
+
+        latest = read_latest_full_backup_bytes()
+        if latest and backups:
+            st.download_button(
+                "📥 Baixar cópia mais recente",
+                data=latest,
+                file_name=backups[0]["filename"],
+                mime="application/json",
+                key="download_latest_backup",
+                use_container_width=True,
+            )
+    else:
+        st.caption("Nenhum backup salvo no servidor ainda. Use os botões acima.")
+
+    st.markdown("---")
+    st.markdown("##### Restaurar backup")
+    restore_options = ["— Enviar arquivo do computador —"] + [
+        b["filename"] for b in backups
+    ]
+    restore_pick = st.selectbox(
+        "Escolha um backup salvo no servidor ou envie um arquivo",
+        options=restore_options,
+        key="restore_backup_pick",
+    )
+    uploaded = None
+    if restore_pick == restore_options[0]:
+        uploaded = st.file_uploader(
+            "Arquivo de backup (.json) do computador",
+            type=["json"],
+            key="upload_full_backup",
+        )
+    replace_all = st.checkbox(
+        "Substituir todos os dados do sistema",
+        key="full_backup_replace",
+        help="Desmarcado: mescla sem duplicar. Marcado: apaga e restaura tudo do arquivo escolhido.",
+    )
+    if st.button(
+        "📤 Restaurar backup",
+        type="primary",
+        key="import_full_backup",
+        use_container_width=True,
+    ):
+        raw_bytes = None
+        if restore_pick != restore_options[0]:
+            raw_bytes = read_full_backup_file(restore_pick)
+        elif uploaded is not None:
+            raw_bytes = uploaded.getvalue()
+        if not raw_bytes:
+            st.error("Selecione um backup do servidor ou envie um arquivo.")
+        else:
+            raw_payload, err = parse_full_backup(raw_bytes)
+            if err:
+                st.error(err)
+            else:
+                stats = restore_full_backup(raw_payload, replace=replace_all)
+                if replace_all:
+                    restored = ", ".join(stats.get("restored", [])) or "—"
+                    st.success(f"Sistema restaurado. Seções: {restored}.")
+                else:
+                    merged = ", ".join(stats.get("merged", [])) or "—"
+                    st.success(f"Dados mesclados. Seções: {merged}.")
+                st.rerun()
 
 
 def _render_backup_tools():
     st.markdown("---")
     st.subheader("Backup de contas")
     st.caption(
-        "O arquivo `backup_aprovados.csv` guarda nome, e-mail e categoria dos usuários "
-        "aprovados. Baixe para salvar uma cópia ou envie um backup salvo para restaurar "
-        "contas (útil após redeploy no Streamlit Cloud)."
+        "O CSV atual (`backup_aprovados.csv`) é atualizado para restauração rápida. "
+        "Cópias datadas ficam em `data/backups/contas/` sem substituir o histórico."
     )
 
     backup_bytes = auth_users.read_backup_csv_bytes()
@@ -209,6 +384,8 @@ def render_auth_config_tab():
         st.write(f"**Sessão atual:** {user.get('name')} — `{user.get('role')}`")
         if user.get("email"):
             st.write(f"E-mail: {user['email']}")
+
+    _render_full_system_backup()
 
     is_admin = _current_user_is_admin()
     if is_admin:

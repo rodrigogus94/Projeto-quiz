@@ -18,7 +18,8 @@ def _professor_nav_sections(show_admin_tab: bool) -> list[tuple[str, str]]:
         ("edit", "✏️ Editar questões"),
         ("exams", "📝 Provas"),
         ("students", "👥 Alunos cadastrados"),
-        ("results", "📊 Resultados"),
+        ("results", "📊 Resultados quizzes"),
+        ("exam_results", "📝 Resultados provas"),
         ("config", "🔐 Contas"),
     ]
     if show_admin_tab:

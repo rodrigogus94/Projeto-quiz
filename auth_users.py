@@ -10,6 +10,7 @@ from pathlib import Path
 DATA_DIR = Path(__file__).parent / "data"
 USERS_PATH = DATA_DIR / "users.json"
 BACKUP_APPROVED_PATH = DATA_DIR / "backup_aprovados.csv"
+BACKUP_ACCOUNTS_DIR = DATA_DIR / "backups" / "contas"
 ROLES = ("professor", "student")
 ACCOUNT_STATUSES = ("pending", "approved", "rejected")
 PROFESSOR_STATUSES = ACCOUNT_STATUSES
@@ -46,8 +47,8 @@ def load_users() -> list:
 def _write_approved_backup(users: list) -> None:
     """Backup local (CSV) dos usuários já cadastrados e aprovados.
 
-    Regenerado a cada alteração no cadastro; serve como cópia de segurança
-    com nome, e-mail e categoria, legível em Excel/planilhas.
+    Mantém o CSV atual para restauração rápida e grava cópias datadas
+    em data/backups/contas/ sem substituir histórico.
     """
     try:
         _ensure_data_dir()
@@ -56,19 +57,36 @@ def _write_approved_backup(users: list) -> None:
             for u in users
             if u.get("active", True) and u.get("status", "approved") == "approved"
         ]
+        rows = [
+            ["nome", "email", "categoria", "cadastrado_em", "atualizado_em"],
+        ]
+        for u in sorted(approved, key=lambda x: (x.get("role", ""), (x.get("name") or "").lower())):
+            rows.append(
+                [
+                    u.get("name") or "",
+                    u.get("email") or "",
+                    ROLE_LABELS.get(u.get("role"), u.get("role") or ""),
+                    u.get("created_at") or "",
+                    u.get("updated_at") or "",
+                ]
+            )
+
         with BACKUP_APPROVED_PATH.open("w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f, delimiter=";")
-            writer.writerow(["nome", "email", "categoria", "cadastrado_em", "atualizado_em"])
-            for u in sorted(approved, key=lambda x: (x.get("role", ""), (x.get("name") or "").lower())):
-                writer.writerow(
-                    [
-                        u.get("name") or "",
-                        u.get("email") or "",
-                        ROLE_LABELS.get(u.get("role"), u.get("role") or ""),
-                        u.get("created_at") or "",
-                        u.get("updated_at") or "",
-                    ]
-                )
+            writer.writerows(rows)
+
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        BACKUP_ACCOUNTS_DIR.mkdir(parents=True, exist_ok=True)
+        history_path = BACKUP_ACCOUNTS_DIR / f"backup_aprovados_{stamp}.csv"
+        if history_path.exists():
+            for seq in range(1, 1000):
+                alt = BACKUP_ACCOUNTS_DIR / f"backup_aprovados_{stamp}_{seq:03d}.csv"
+                if not alt.exists():
+                    history_path = alt
+                    break
+        with history_path.open("w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f, delimiter=";")
+            writer.writerows(rows)
     except OSError:
         # O backup nunca deve quebrar o fluxo principal de cadastro.
         pass

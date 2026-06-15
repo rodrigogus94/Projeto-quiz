@@ -96,7 +96,7 @@ def export_markdown(payload: dict) -> str:
         f"- **Código de verificação:** `{payload.get('checksum', '')}`",
         "",
         "> Para registrar no sistema, o professor deve importar o arquivo **.json** "
-        "correspondente (aba Resultados → Importar arquivo de resultados).",
+        "correspondente (aba **Resultados provas → Restaurar provas respondidas**).",
         "",
     ]
 
@@ -275,3 +275,44 @@ def import_results(payload: dict, target_name: str, target_email: str | None) ->
         "exam_added": exam_added,
         "exam_skipped": exam_skipped,
     }
+
+
+def import_student_exports_bulk(
+    files: list[tuple[str, bytes]],
+    *,
+    exams_only: bool = False,
+) -> dict:
+    """Importa vários arquivos de resultados de alunos de uma vez."""
+    summary = {
+        "files_ok": 0,
+        "files_failed": 0,
+        "quiz_added": 0,
+        "quiz_skipped": 0,
+        "exam_added": 0,
+        "exam_skipped": 0,
+        "errors": [],
+        "students": [],
+    }
+    for filename, raw in files:
+        payload, err = parse_student_export(raw)
+        if err:
+            summary["files_failed"] += 1
+            summary["errors"].append(f"{filename}: {err}")
+            continue
+        student = payload.get("student") or {}
+        name = (student.get("name") or "").strip()
+        email = student.get("email")
+        if exams_only:
+            payload = {**payload, "quiz_results": []}
+        if not (payload.get("quiz_results") or payload.get("exam_submissions")):
+            summary["files_failed"] += 1
+            summary["errors"].append(f"{filename}: nenhum resultado no arquivo.")
+            continue
+        stats = import_results(payload, name, email)
+        summary["files_ok"] += 1
+        summary["quiz_added"] += stats["quiz_added"]
+        summary["quiz_skipped"] += stats["quiz_skipped"]
+        summary["exam_added"] += stats["exam_added"]
+        summary["exam_skipped"] += stats["exam_skipped"]
+        summary["students"].append(name)
+    return summary

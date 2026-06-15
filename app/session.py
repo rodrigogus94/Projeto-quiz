@@ -43,6 +43,12 @@ def init_session_state():
     auth_users.bootstrap_data_store()
     quiz_storage.repair_exams_questions()
     bootstrap_auth_config()
+    try:
+        from system_backup import run_auto_backup_if_due
+
+        run_auto_backup_if_due()
+    except Exception:
+        pass
     _migrate_legacy_nav_keys()
     defaults = {
         "role": None,

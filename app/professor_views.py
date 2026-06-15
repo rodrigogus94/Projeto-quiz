@@ -52,7 +52,12 @@ from quiz_storage import (
     update_student,
 )
 
-from app.result_transfer import import_results, parse_student_export, preview_import
+from app.result_transfer import (
+    import_results,
+    import_student_exports_bulk,
+    parse_student_export,
+    preview_import,
+)
 
 from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
 from app.charts import (
@@ -591,28 +596,80 @@ def render_exams_tab():
             )
 
 
-def _render_import_results_section():
-    """Importa o arquivo de resultados gerado pelo aluno, com confirmação."""
-    flash = st.session_state.pop("import_results_flash", None)
+def _render_import_results_section(*, focus: str = "all"):
+    """Importa arquivos .json gerados pelos alunos (quizzes e/ou provas)."""
+    flash_key = (
+        "import_exam_results_flash"
+        if focus == "exam"
+        else "import_results_flash"
+    )
+    flash = st.session_state.pop(flash_key, None)
     if flash:
         st.success(flash)
         st.toast("✅ Resultados importados com sucesso!")
 
-    with st.expander("📂 Importar arquivo de resultados de aluno", expanded=bool(flash)):
-        st.caption(
+    if focus == "exam":
+        title = "📂 Restaurar provas respondidas pelos alunos"
+        caption = (
+            "Envie o arquivo **.json** que o aluno baixou em **Meus resultados** "
+            "(ex.: `resultados_leandro-siqueira_20260612-2306.json`). "
+            "Útil após reinício do servidor quando os envios sumirem. "
+            "Você pode enviar **vários arquivos** de uma vez."
+        )
+        uploader_key = "import_exam_results_files"
+        expanded = bool(flash)
+    else:
+        title = "📂 Importar arquivo de resultados de aluno"
+        caption = (
             "O aluno envia o arquivo **.json** (ou por e-mail com JSON + Markdown). "
             "Importe apenas o **JSON** aqui — o Markdown é só para leitura. "
             "Os resultados são adicionados ao aluno confirmado, sem duplicar o que já existe."
         )
+        uploader_key = "import_results_file"
+        expanded = bool(flash)
+
+    with st.expander(title, expanded=expanded):
+        st.caption(caption)
+        accept_multiple = focus == "exam"
         up = st.file_uploader(
-            "Arquivo de resultados (.json)",
+            "Arquivo(s) de resultados (.json)",
             type=["json"],
-            key="import_results_file",
+            key=uploader_key,
+            accept_multiple_files=accept_multiple,
         )
         if not up:
             return
 
-        payload, err = parse_student_export(up.getvalue())
+        files = up if accept_multiple else [up]
+
+        if accept_multiple and len(files) > 1:
+            if st.button(
+                "📤 Importar todos os arquivos",
+                type="primary",
+                key="import_exam_bulk_btn",
+            ):
+                payload_files = [(f.name, f.getvalue()) for f in files]
+                stats = import_student_exports_bulk(payload_files, exams_only=True)
+                if stats["files_ok"] == 0:
+                    for err in stats["errors"]:
+                        st.error(err)
+                    return
+                msg = (
+                    f"✅ {stats['files_ok']} arquivo(s) importado(s): "
+                    f"{stats['exam_added']} prova(s) adicionada(s) "
+                    f"({stats['exam_skipped']} já existiam)."
+                )
+                if stats["files_failed"]:
+                    msg += f" {stats['files_failed']} arquivo(s) com erro."
+                st.session_state[flash_key] = msg
+                if stats["errors"]:
+                    for err in stats["errors"]:
+                        st.warning(err)
+                st.rerun()
+            return
+
+        single = files[0]
+        payload, err = parse_student_export(single.getvalue())
         if err:
             st.error(err)
             return
@@ -629,6 +686,9 @@ def _render_import_results_section():
 
         quiz_results = payload.get("quiz_results", [])
         exam_submissions = payload.get("exam_submissions", [])
+        if focus == "exam":
+            quiz_results = []
+
         if quiz_results:
             st.markdown(f"**Quizzes no arquivo ({len(quiz_results)}):**")
             st.dataframe(
@@ -652,6 +712,8 @@ def _render_import_results_section():
                     [
                         {
                             "Prova": s.get("exam_title") or "(prova desconhecida)",
+                            "Pontos": f"{(s.get('summary') or {}).get('total_points', 0):.1f}/"
+                            f"{(s.get('summary') or {}).get('max_points', 0):.0f}",
                             "A": (s.get("summary") or {}).get("counts", {}).get("A", 0),
                             "PA": (s.get("summary") or {}).get("counts", {}).get("PA", 0),
                             "NA": (s.get("summary") or {}).get("counts", {}).get("NA", 0),
@@ -687,7 +749,7 @@ def _render_import_results_section():
             "Atribuir os resultados ao aluno:",
             options,
             index=default_index,
-            key="import_results_target",
+            key=f"import_results_target_{focus}",
         )
         if target.strip().lower() != detected_key:
             st.warning(
@@ -695,7 +757,11 @@ def _render_import_results_section():
                 f"mas será atribuído a **{target}**."
             )
 
-        check = preview_import(payload, target)
+        import_payload = payload
+        if focus == "exam":
+            import_payload = {**payload, "quiz_results": []}
+
+        check = preview_import(import_payload, target)
         if not check["has_new"]:
             st.error(
                 "🚫 Importação bloqueada: todos os resultados deste arquivo "
@@ -717,19 +783,19 @@ def _render_import_results_section():
 
         confirm = st.checkbox(
             f"Confirmo que estes resultados pertencem a **{target}**.",
-            key=f"import_results_confirm_{target}",
+            key=f"import_results_confirm_{focus}_{target}",
         )
         if st.button(
             "✅ Importar resultados",
             type="primary",
             disabled=not confirm,
-            key="import_results_btn",
+            key=f"import_results_btn_{focus}",
         ):
             email_for_target = (
                 detected_email if target.strip().lower() == detected_key else None
             )
-            stats = import_results(payload, target, email_for_target)
-            st.session_state["import_results_flash"] = (
+            stats = import_results(import_payload, target, email_for_target)
+            st.session_state[flash_key] = (
                 f"✅ Importação concluída para **{target}**: "
                 f"{stats['quiz_added']} resultado(s) de quiz adicionados "
                 f"({stats['quiz_skipped']} já existiam) · "
@@ -739,10 +805,91 @@ def _render_import_results_section():
             st.rerun()
 
 
+def render_exam_results_tab():
+    st.subheader("Resultados das provas")
+    st.caption(
+        "Visão geral dos envios. Para revisar questão a questão, use **Provas → Resultados e revisão**."
+    )
+
+    _render_import_results_section(focus="exam")
+
+    exams = list_exams()
+    if not exams:
+        st.info("Nenhuma prova cadastrada.")
+        return
+
+    col_sel, col_refresh = st.columns([3, 1], vertical_alignment="bottom")
+    with col_sel:
+        exam_options = {ex["title"]: ex["id"] for ex in exams}
+        picked_title = st.selectbox("Prova", list(exam_options.keys()), key="exam_res_sel")
+    with col_refresh:
+        if st.button("🔄 Atualizar", key="exam_res_refresh", use_container_width=True):
+            st.rerun()
+
+    exam_id = exam_options[picked_title]
+    exam = get_exam(exam_id)
+    submissions = submissions_for_exam(exam_id)
+
+    if not submissions:
+        st.info("Nenhum aluno enviou esta prova ainda.")
+        registered = [s["name"] for s in load_students()]
+        if registered:
+            with st.expander(f"💤 Alunos cadastrados sem envio ({len(registered)})"):
+                st.write(", ".join(sorted(registered)))
+        return
+
+    rows = []
+    for sub in submissions:
+        summary = sub.get("summary") or summarize_answers(sub.get("answers", []))
+        counts = summary.get("counts", {})
+        rows.append(
+            {
+                "Aluno": sub.get("student_name", "—"),
+                "Pontos": f"{summary.get('total_points', 0):.2f}",
+                "Máx": f"{summary.get('max_points', 0):.0f}",
+                "%": round(summary.get("percent", 0), 1),
+                "MC corretas": summary.get("mc_correct", counts.get("A", 0)),
+                "A": counts.get("A", 0),
+                "PA": counts.get("PA", 0),
+                "NA": counts.get("NA", 0),
+                "Correção liberada": "Sim" if exam_correction_released(sub) else "Não",
+                "Enviada (UTC)": (sub.get("submitted_at") or "—")[:16].replace("T", " "),
+            }
+        )
+
+    df = pd.DataFrame(rows).sort_values("%", ascending=False)
+    responders = len(df)
+    avg_pct = df["%"].mean() if responders else 0.0
+    released_count = int((df["Correção liberada"] == "Sim").sum())
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Alunos que enviaram", responders)
+    m2.metric("Média da turma", f"{avg_pct:.1f}%")
+    m3.metric("Correção liberada", f"{released_count}/{responders}")
+    if exam:
+        summary_ex = exam_summary(exam.get("questions", []))
+        m4.metric("Questões", summary_ex.get("total", 0))
+
+    st.markdown("#### 👥 Ranking da prova")
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+    responder_keys = {n.strip().lower() for n in df["Aluno"]}
+    pending_names = [
+        s["name"]
+        for s in load_students()
+        if s["name"].strip().lower() not in responder_keys
+    ]
+    with st.expander(f"💤 Ainda não enviaram ({len(pending_names)})"):
+        if pending_names:
+            st.write(", ".join(sorted(pending_names)))
+        else:
+            st.write("Todos os alunos cadastrados já enviaram esta prova. 🎉")
+
+
 def render_results_tab(materials: list):
     st.subheader("Resultados dos quizzes")
 
-    _render_import_results_section()
+    _render_import_results_section(focus="all")
 
     if not materials:
         st.info("Sem materiais para analisar.")
@@ -1025,6 +1172,9 @@ def render_professor_panel():
 
     elif section == "results":
         render_results_tab(materials)
+
+    elif section == "exam_results":
+        render_exam_results_tab()
 
     elif section == "config":
         render_auth_config_tab()
