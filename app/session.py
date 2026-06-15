@@ -42,6 +42,7 @@ def init_session_state():
     migrate_legacy_leaderboard()
     auth_users.bootstrap_data_store()
     quiz_storage.repair_exams_questions()
+    quiz_storage.repair_orphan_exam_submissions()
     bootstrap_auth_config()
     try:
         from system_backup import run_auto_backup_if_due
@@ -97,6 +98,7 @@ def soft_reload_app() -> None:
     migrate_legacy_leaderboard()
     auth_users.bootstrap_data_store()
     quiz_storage.repair_exams_questions()
+    quiz_storage.repair_orphan_exam_submissions()
     bootstrap_auth_config()
     sync_nav_widgets_from_persist()
     st.rerun()

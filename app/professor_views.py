@@ -41,7 +41,9 @@ from quiz_storage import (
     load_students,
     purge_student_results,
     student_quiz_stats,
+    count_orphan_exam_submissions,
     exam_correction_released,
+    repair_orphan_exam_submissions,
     set_exam_correction_released,
     submissions_for_exam,
     toggle_exam_active,
@@ -839,6 +841,10 @@ def _render_import_results_section(*, focus: str = "all"):
                     f" ({stats.get('quiz_removed', 0)} quiz(zes) e "
                     f"{stats.get('exam_removed', 0)} prova(s) antigos removidos)"
                 )
+            if stats.get("exam_relinked"):
+                extra += f" · {stats['exam_relinked']} prova(s) vinculada(s) pelo título"
+            if stats.get("exam_repaired"):
+                extra += f" · {stats['exam_repaired']} envio(s) reparado(s) no sistema"
             st.session_state[flash_key] = (
                 f"✅ {action} para **{target}**{extra}: "
                 f"{stats['quiz_added']} resultado(s) de quiz adicionados "
@@ -856,6 +862,13 @@ def render_exam_results_tab():
     )
 
     _render_import_results_section(focus="exam")
+
+    repaired = repair_orphan_exam_submissions()
+    if repaired:
+        st.success(
+            f"**{repaired}** envio(s) de prova foram reconectados à prova atual "
+            "(o ID antigo não existia mais após reinício do sistema)."
+        )
 
     exams = list_exams()
     if not exams:
@@ -875,6 +888,26 @@ def render_exam_results_tab():
     submissions = submissions_for_exam(exam_id)
 
     if not submissions:
+        orphans = count_orphan_exam_submissions()
+        if orphans:
+            st.warning(
+                f"Existem **{orphans}** envio(s) no sistema com ID de prova antigo. "
+                "Clique em **Atualizar** ou **Vincular envios órfãos** abaixo."
+            )
+            if st.button(
+                "🔗 Vincular envios órfãos às provas atuais",
+                key="repair_exam_submissions",
+                use_container_width=True,
+            ):
+                fixed = repair_orphan_exam_submissions()
+                if fixed:
+                    st.success(f"{fixed} envio(s) vinculados.")
+                else:
+                    st.info(
+                        "Não foi possível vincular automaticamente. "
+                        "Confira se o título da prova no sistema é igual ao do arquivo importado."
+                    )
+                st.rerun()
         st.info("Nenhum aluno enviou esta prova ainda.")
         registered = [s["name"] for s in load_students()]
         if registered:

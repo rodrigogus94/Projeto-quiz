@@ -5,6 +5,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from app.result_transfer import import_results, parse_student_export, preview_import
+from quiz_storage import (
+    repair_orphan_exam_submissions,
+    resolve_exam_id_for_submission,
+    submissions_for_exam,
+)
 from system_backup import (
     FULL_BACKUP_KIND,
     BACKUP_FULL_DIR,
@@ -69,6 +74,57 @@ class TestSystemBackup(unittest.TestCase):
                 second = save_timestamped_full_backup(source="manual")
                 self.assertNotEqual(first["filename"], second["filename"])
                 self.assertEqual(len(list_full_backups()), 2)
+
+
+class TestExamSubmissionLinking(unittest.TestCase):
+    def test_resolve_exam_id_by_title(self):
+        exams = [{"id": "new-exam", "title": "Atividade Avaliativa UC 2", "questions": []}]
+        with patch("quiz_storage.list_exams", return_value=exams), patch(
+            "quiz_storage.get_exam",
+            side_effect=lambda eid: exams[0] if eid == "new-exam" else None,
+        ):
+            new_id, title = resolve_exam_id_for_submission(
+                "old-exam-id",
+                "Atividade Avaliativa UC 2",
+            )
+            self.assertEqual(new_id, "new-exam")
+            self.assertEqual(title, "Atividade Avaliativa UC 2")
+
+    def test_repair_orphan_exam_submissions(self):
+        exams = [{"id": "new-exam", "title": "Prova 1", "questions": []}]
+        subs = [
+            {
+                "id": "sub-1",
+                "exam_id": "old-exam",
+                "exam_title": "Prova 1",
+                "student_name": "Aluno",
+            }
+        ]
+        with patch("quiz_storage.list_exams", return_value=exams), patch(
+            "quiz_storage.load_exam_submissions", return_value=subs
+        ), patch("quiz_storage.save_exam_submissions") as mock_save:
+            fixed = repair_orphan_exam_submissions()
+            self.assertEqual(fixed, 1)
+            self.assertEqual(subs[0]["exam_id"], "new-exam")
+            mock_save.assert_called_once()
+
+    def test_submissions_for_exam_matches_by_title(self):
+        exams = [{"id": "new-exam", "title": "Prova 1", "questions": []}]
+        subs = [
+            {
+                "id": "sub-1",
+                "exam_id": "old-exam",
+                "exam_title": "Prova 1",
+                "student_name": "Aluno",
+            }
+        ]
+        with patch("quiz_storage.list_exams", return_value=exams), patch(
+            "quiz_storage.get_exam",
+            return_value=exams[0],
+        ), patch("quiz_storage.load_exam_submissions", return_value=subs):
+            matched = submissions_for_exam("new-exam")
+            self.assertEqual(len(matched), 1)
+            self.assertEqual(matched[0]["student_name"], "Aluno")
 
 
 class TestExamResultImport(unittest.TestCase):

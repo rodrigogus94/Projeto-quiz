@@ -619,8 +619,94 @@ def save_exam_submissions(submissions: list) -> None:
     _save_json(EXAM_SUBMISSIONS_PATH, submissions)
 
 
+def resolve_exam_id_for_submission(
+    exam_id: str | None,
+    exam_title: str | None = None,
+) -> tuple[str | None, str | None]:
+    """Associa um envio à prova atual (por ID ou título)."""
+    exams = list_exams()
+    if not exams:
+        return exam_id, exam_title
+
+    known_ids = {e["id"] for e in exams}
+    if exam_id and exam_id in known_ids:
+        exam = get_exam(exam_id)
+        title = exam_title or (exam.get("title") if exam else None)
+        return exam_id, title
+
+    title_key = (exam_title or "").strip().lower()
+    if title_key:
+        for exam in exams:
+            if exam["title"].strip().lower() == title_key:
+                return exam["id"], exam["title"]
+
+    if len(exams) == 1:
+        return exams[0]["id"], exams[0]["title"]
+
+    return exam_id, exam_title
+
+
+def repair_orphan_exam_submissions() -> int:
+    """Reconecta envios importados cujo exam_id antigo não existe mais."""
+    exams = list_exams()
+    if not exams:
+        return 0
+
+    known_ids = {e["id"] for e in exams}
+    fixed = 0
+    subs = load_exam_submissions()
+    changed = False
+    for sub in subs:
+        current_id = sub.get("exam_id")
+        if current_id in known_ids:
+            continue
+        new_id, title = resolve_exam_id_for_submission(current_id, sub.get("exam_title"))
+        if not new_id or new_id not in known_ids:
+            continue
+        sub["exam_id"] = new_id
+        if title:
+            sub["exam_title"] = title
+        changed = True
+        fixed += 1
+    if changed:
+        save_exam_submissions(subs)
+    return fixed
+
+
+def count_orphan_exam_submissions() -> int:
+    known_ids = {e["id"] for e in list_exams()}
+    return sum(
+        1
+        for s in load_exam_submissions()
+        if s.get("exam_id") not in known_ids
+    )
+
+
 def submissions_for_exam(exam_id: str) -> list:
-    return [s for s in load_exam_submissions() if s.get("exam_id") == exam_id]
+    exam = get_exam(exam_id)
+    if not exam:
+        return []
+
+    title_key = exam["title"].strip().lower()
+    known_ids = {e["id"] for e in list_exams()}
+    matched: list[dict] = []
+    seen_ids: set[str] = set()
+    for sub in load_exam_submissions():
+        sub_id = sub.get("id")
+        if sub_id and sub_id in seen_ids:
+            continue
+        if sub.get("exam_id") == exam_id:
+            matched.append(sub)
+            if sub_id:
+                seen_ids.add(sub_id)
+            continue
+        sub_title = (sub.get("exam_title") or "").strip().lower()
+        old_id = sub.get("exam_id")
+        if sub_title == title_key and old_id not in known_ids:
+            matched.append(sub)
+            if sub_id:
+                seen_ids.add(sub_id)
+    return matched
 
 
 def add_exam_submission(submission: dict) -> None:

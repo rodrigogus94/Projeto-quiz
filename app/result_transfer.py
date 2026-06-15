@@ -17,8 +17,11 @@ from quiz_storage import (
     add_exam_submission,
     get_exam,
     get_material,
+    list_exams,
     load_exam_submissions,
     load_leaderboard,
+    repair_orphan_exam_submissions,
+    resolve_exam_id_for_submission,
     save_exam_submissions,
     save_leaderboard,
 )
@@ -305,12 +308,21 @@ def import_results(
         save_leaderboard(board)
 
     existing_sub_ids = {s.get("id") for s in load_exam_submissions()}
-    exam_added = exam_skipped = 0
+    exam_added = exam_skipped = exam_relinked = 0
     for raw_sub in payload.get("exam_submissions", []):
         if raw_sub.get("id") in existing_sub_ids:
             exam_skipped += 1
             continue
+        raw_title = raw_sub.get("exam_title")
+        resolved_id, resolved_title = resolve_exam_id_for_submission(
+            raw_sub.get("exam_id"), raw_title
+        )
+        if resolved_id and resolved_id != raw_sub.get("exam_id"):
+            exam_relinked += 1
         sub = {k: v for k, v in raw_sub.items() if k != "exam_title"}
+        sub["exam_id"] = resolved_id
+        if resolved_title:
+            sub["exam_title"] = resolved_title
         sub["student_name"] = target_name
         sub["student_email"] = target_email or _norm(raw_sub.get("student_email")) or None
         sub["imported_at"] = datetime.now(timezone.utc).isoformat()
@@ -318,11 +330,15 @@ def import_results(
         existing_sub_ids.add(sub.get("id"))
         exam_added += 1
 
+    relinked = repair_orphan_exam_submissions()
+
     return {
         "quiz_added": quiz_added,
         "quiz_skipped": quiz_skipped,
         "exam_added": exam_added,
         "exam_skipped": exam_skipped,
+        "exam_relinked": exam_relinked,
+        "exam_repaired": relinked,
         "quiz_removed": replaced.get("quiz_removed", 0),
         "exam_removed": replaced.get("exam_removed", 0),
     }
