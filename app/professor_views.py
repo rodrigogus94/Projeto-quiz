@@ -643,13 +643,22 @@ def _render_import_results_section(*, focus: str = "all"):
         files = up if accept_multiple else [up]
 
         if accept_multiple and len(files) > 1:
+            bulk_replace = st.checkbox(
+                "Substituir envios já existentes (mesmos IDs do arquivo)",
+                key="import_exam_bulk_replace",
+                help="Use quando os alunos foram removidos mas os envios antigos ainda estão no sistema.",
+            )
             if st.button(
                 "📤 Importar todos os arquivos",
                 type="primary",
                 key="import_exam_bulk_btn",
             ):
                 payload_files = [(f.name, f.getvalue()) for f in files]
-                stats = import_student_exports_bulk(payload_files, exams_only=True)
+                stats = import_student_exports_bulk(
+                    payload_files,
+                    exams_only=True,
+                    replace_existing=bulk_replace,
+                )
                 if stats["files_ok"] == 0:
                     for err in stats["errors"]:
                         st.error(err)
@@ -665,6 +674,7 @@ def _render_import_results_section(*, focus: str = "all"):
                 if stats["errors"]:
                     for err in stats["errors"]:
                         st.warning(err)
+                st.session_state.leaderboard = load_leaderboard()
                 st.rerun()
             return
 
@@ -762,31 +772,50 @@ def _render_import_results_section(*, focus: str = "all"):
             import_payload = {**payload, "quiz_results": []}
 
         check = preview_import(import_payload, target)
+        replace_existing = False
         if not check["has_new"]:
-            st.error(
-                "🚫 Importação bloqueada: todos os resultados deste arquivo "
-                f"já estão registrados no sistema para **{target}** "
-                f"({check['quiz_existing']} quiz(zes) e {check['exam_existing']} prova(s))."
+            st.warning(
+                "Os resultados deste arquivo **já constam no sistema** "
+                f"({check['quiz_existing']} quiz(zes) e {check['exam_existing']} prova(s)). "
+                "Isso costuma acontecer quando os alunos foram removidos da lista, "
+                "mas os envios de quiz/prova **permaneceram** no armazenamento."
             )
-            return
+            replace_existing = st.checkbox(
+                "Substituir envios deste arquivo (remove os registros com os mesmos IDs e reimporta)",
+                key=f"import_replace_{focus}_{target}",
+            )
+            if not replace_existing:
+                return
+            st.info(
+                f"Serão substituídos: {check['quiz_existing']} quiz(zes) e "
+                f"{check['exam_existing']} prova(s) deste arquivo."
+            )
+        else:
+            parts = []
+            if check["quiz_new"]:
+                parts.append(f"{check['quiz_new']} resultado(s) de quiz")
+            if check["exam_new"]:
+                parts.append(f"{check['exam_new']} prova(s)")
+            msg = f"Serão importados: {' e '.join(parts)}."
+            existing_total = check["quiz_existing"] + check["exam_existing"]
+            if existing_total:
+                msg += f" Outros {existing_total} já estão no sistema e serão ignorados."
+            st.info(msg)
 
-        parts = []
-        if check["quiz_new"]:
-            parts.append(f"{check['quiz_new']} resultado(s) de quiz")
-        if check["exam_new"]:
-            parts.append(f"{check['exam_new']} prova(s)")
-        msg = f"Serão importados: {' e '.join(parts)}."
-        existing_total = check["quiz_existing"] + check["exam_existing"]
-        if existing_total:
-            msg += f" Outros {existing_total} já estão no sistema e serão ignorados."
-        st.info(msg)
+        if not match:
+            st.checkbox(
+                f"Recadastrar **{target}** na lista de alunos",
+                value=True,
+                key=f"import_reenroll_{focus}_{target}",
+            )
 
         confirm = st.checkbox(
-            f"Confirmo que estes resultados pertencem a **{target}**.",
+            f"Confirmo que estes resultados pertencem a **{target}**."
+            + (" (substituição)" if replace_existing else ""),
             key=f"import_results_confirm_{focus}_{target}",
         )
         if st.button(
-            "✅ Importar resultados",
+            "✅ Importar resultados" if not replace_existing else "🔄 Substituir e importar",
             type="primary",
             disabled=not confirm,
             key=f"import_results_btn_{focus}",
@@ -794,9 +823,24 @@ def _render_import_results_section(*, focus: str = "all"):
             email_for_target = (
                 detected_email if target.strip().lower() == detected_key else None
             )
-            stats = import_results(import_payload, target, email_for_target)
+            stats = import_results(
+                import_payload,
+                target,
+                email_for_target,
+                replace_existing=replace_existing,
+            )
+            if st.session_state.get(f"import_reenroll_{focus}_{target}", False) and not match:
+                add_student(target)
+            st.session_state.leaderboard = load_leaderboard()
+            action = "Substituição concluída" if replace_existing else "Importação concluída"
+            extra = ""
+            if replace_existing and (stats.get("exam_removed") or stats.get("quiz_removed")):
+                extra = (
+                    f" ({stats.get('quiz_removed', 0)} quiz(zes) e "
+                    f"{stats.get('exam_removed', 0)} prova(s) antigos removidos)"
+                )
             st.session_state[flash_key] = (
-                f"✅ Importação concluída para **{target}**: "
+                f"✅ {action} para **{target}**{extra}: "
                 f"{stats['quiz_added']} resultado(s) de quiz adicionados "
                 f"({stats['quiz_skipped']} já existiam) · "
                 f"{stats['exam_added']} prova(s) adicionadas "

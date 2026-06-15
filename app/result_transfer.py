@@ -19,6 +19,7 @@ from quiz_storage import (
     get_material,
     load_exam_submissions,
     load_leaderboard,
+    save_exam_submissions,
     save_leaderboard,
 )
 
@@ -186,6 +187,43 @@ def _quiz_dedupe_key(entry: dict) -> tuple:
     )
 
 
+def _remove_payload_duplicates_from_store(
+    payload: dict, target_name: str, target_email: str | None = None
+) -> dict:
+    """Remove do armazenamento os registros que o arquivo vai substituir."""
+    name_key = _norm(target_name)
+    payload_sub_ids = {
+        sid for sid in (s.get("id") for s in payload.get("exam_submissions", [])) if sid
+    }
+    exam_removed = 0
+    if payload_sub_ids:
+        subs = load_exam_submissions()
+        kept_subs = [s for s in subs if s.get("id") not in payload_sub_ids]
+        exam_removed = len(subs) - len(kept_subs)
+        if exam_removed:
+            save_exam_submissions(kept_subs)
+
+    payload_quiz_keys = {
+        (
+            raw.get("material_id"),
+            name_key,
+            raw.get("score"),
+            raw.get("total"),
+            raw.get("submitted_at"),
+        )
+        for raw in payload.get("quiz_results", [])
+    }
+    quiz_removed = 0
+    if payload_quiz_keys:
+        board = load_leaderboard()
+        kept_board = [e for e in board if _quiz_dedupe_key(e) not in payload_quiz_keys]
+        quiz_removed = len(board) - len(kept_board)
+        if quiz_removed:
+            save_leaderboard(kept_board)
+
+    return {"quiz_removed": quiz_removed, "exam_removed": exam_removed}
+
+
 def preview_import(payload: dict, target_name: str) -> dict:
     """Verifica, antes de importar, o que é novo e o que já está no sistema."""
     name_key = _norm(target_name)
@@ -222,13 +260,24 @@ def preview_import(payload: dict, target_name: str) -> dict:
     }
 
 
-def import_results(payload: dict, target_name: str, target_email: str | None) -> dict:
+def import_results(
+    payload: dict,
+    target_name: str,
+    target_email: str | None,
+    *,
+    replace_existing: bool = False,
+) -> dict:
     """Adiciona os resultados do arquivo ao aluno confirmado pelo professor.
 
     Resultados já existentes (mesma tentativa/envio) são ignorados.
+    Com replace_existing=True, remove antes os registros com os mesmos IDs/chaves.
     """
     target_name = target_name.strip()
     target_email = _norm(target_email) or None
+
+    replaced = {"quiz_removed": 0, "exam_removed": 0}
+    if replace_existing:
+        replaced = _remove_payload_duplicates_from_store(payload, target_name, target_email)
 
     board = load_leaderboard()
     existing_quiz = {_quiz_dedupe_key(e) for e in board}
@@ -274,6 +323,8 @@ def import_results(payload: dict, target_name: str, target_email: str | None) ->
         "quiz_skipped": quiz_skipped,
         "exam_added": exam_added,
         "exam_skipped": exam_skipped,
+        "quiz_removed": replaced.get("quiz_removed", 0),
+        "exam_removed": replaced.get("exam_removed", 0),
     }
 
 
@@ -281,6 +332,7 @@ def import_student_exports_bulk(
     files: list[tuple[str, bytes]],
     *,
     exams_only: bool = False,
+    replace_existing: bool = False,
 ) -> dict:
     """Importa vários arquivos de resultados de alunos de uma vez."""
     summary = {
@@ -308,7 +360,9 @@ def import_student_exports_bulk(
             summary["files_failed"] += 1
             summary["errors"].append(f"{filename}: nenhum resultado no arquivo.")
             continue
-        stats = import_results(payload, name, email)
+        stats = import_results(
+            payload, name, email, replace_existing=replace_existing
+        )
         summary["files_ok"] += 1
         summary["quiz_added"] += stats["quiz_added"]
         summary["quiz_skipped"] += stats["quiz_skipped"]

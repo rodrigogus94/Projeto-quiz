@@ -112,6 +112,25 @@ class TestExamResultImport(unittest.TestCase):
         self.assertIsNone(err)
         self.assertEqual(len(payload["exam_submissions"]), 1)
 
+    def test_remove_payload_duplicates_from_store(self):
+        from app.result_transfer import _remove_payload_duplicates_from_store
+
+        payload, _ = parse_student_export(self.raw)
+        with patch("app.result_transfer.load_exam_submissions") as mock_load, patch(
+            "app.result_transfer.save_exam_submissions"
+        ) as mock_save, patch(
+            "app.result_transfer.load_leaderboard", return_value=[]
+        ):
+            mock_load.return_value = [
+                {
+                    "id": "9be8e371-c546-4c6d-b9a7-2480a7bc2166",
+                    "student_name": "Leandro Siqueira",
+                }
+            ]
+            removed = _remove_payload_duplicates_from_store(payload, "Leandro Siqueira")
+            self.assertEqual(removed["exam_removed"], 1)
+            mock_save.assert_called_once_with([])
+
     @patch("app.result_transfer.load_exam_submissions", return_value=[])
     @patch("app.result_transfer.load_leaderboard", return_value=[])
     @patch("app.result_transfer.add_exam_submission")
