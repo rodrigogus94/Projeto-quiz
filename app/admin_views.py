@@ -154,7 +154,8 @@ def _render_full_system_backup():
     replace_all = st.checkbox(
         "Substituir todos os dados do sistema",
         key="full_backup_replace",
-        help="Desmarcado: mescla sem duplicar. Marcado: apaga e restaura tudo do arquivo escolhido.",
+        help="Marcado: restaura tudo (recomendado para recuperar justificativas). "
+        "Desmarcado: mescla — atualiza provas pelo título e envios com mais justificativas.",
     )
     if st.button(
         "📤 Restaurar backup",
@@ -175,12 +176,18 @@ def _render_full_system_backup():
                 st.error(err)
             else:
                 stats = restore_full_backup(raw_payload, replace=replace_all)
+                extra = ""
+                if stats.get("exam_questions_rehydrated"):
+                    extra += (
+                        f" Justificativas/gabaritos recuperados em "
+                        f"{stats['exam_questions_rehydrated']} prova(s)."
+                    )
                 if replace_all:
                     restored = ", ".join(stats.get("restored", [])) or "—"
-                    st.success(f"Sistema restaurado. Seções: {restored}.")
+                    st.success(f"Sistema restaurado. Seções: {restored}.{extra}")
                 else:
                     merged = ", ".join(stats.get("merged", [])) or "—"
-                    st.success(f"Dados mesclados. Seções: {merged}.")
+                    st.success(f"Dados mesclados. Seções: {merged}.{extra}")
                 st.rerun()
 
 

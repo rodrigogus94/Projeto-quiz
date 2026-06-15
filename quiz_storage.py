@@ -537,7 +537,7 @@ def student_submission_for_exam(
 
 def repair_exams_questions() -> int:
     """Atualiza questões salvas para o formato com justificativa, quando aplicável."""
-    from pdf_parser import normalize_exam_questions
+    from pdf_parser import merge_exam_questions, normalize_exam_questions
 
     store = load_exams_store()
     fixed_count = 0
@@ -549,7 +549,55 @@ def repair_exams_questions() -> int:
             fixed_count += 1
     if fixed_count:
         save_exams_store(store)
+    fixed_count += rehydrate_exam_questions_from_store()
     return fixed_count
+
+
+def rehydrate_exam_questions_from_store() -> int:
+    """Copia gabaritos de justificativa entre provas com o mesmo título."""
+    from pdf_parser import _exam_question_richness, merge_exam_questions
+
+    store = load_exams_store()
+    exams = store.get("exams") or []
+    by_title: dict[str, list[dict]] = {}
+    for exam in exams:
+        title_key = (exam.get("title") or "").strip().lower()
+        if title_key:
+            by_title.setdefault(title_key, []).append(exam)
+
+    fixed = 0
+    for group in by_title.values():
+        if len(group) < 2:
+            continue
+        richest = max(group, key=lambda e: _exam_question_richness(e.get("questions", [])))
+        best_questions = richest.get("questions") or []
+        if not best_questions:
+            continue
+        for exam in group:
+            if exam["id"] == richest["id"]:
+                continue
+            merged = merge_exam_questions(exam.get("questions", []), best_questions)
+            if merged != exam.get("questions"):
+                exam["questions"] = merged
+                fixed += 1
+    if fixed:
+        save_exams_store(store)
+    return fixed
+
+
+def _submission_justify_richness(submission: dict) -> int:
+    return sum(
+        1
+        for ans in submission.get("answers") or []
+        if (ans.get("justify_text") or "").strip()
+    )
+
+
+def merge_exam_submission(existing: dict, incoming: dict) -> dict:
+    """Prefere o envio com mais justificativas e respostas completas."""
+    if _submission_justify_richness(incoming) >= _submission_justify_richness(existing):
+        return {**existing, **incoming}
+    return existing
 
 
 def create_exam(title: str, questions: list, deadline_at: str | None = None) -> dict:

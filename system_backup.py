@@ -23,6 +23,7 @@ from quiz_storage import (
     load_leaderboard,
     load_materials_store,
     load_students,
+    merge_exam_submission,
     save_config,
     save_exam_submissions,
     save_exams_store,
@@ -214,11 +215,40 @@ def restore_full_backup(payload: dict, *, replace: bool = True) -> dict:
                     current.setdefault("active_material_ids", []).append(mid)
             save_materials_store(current)
         elif key == "exams":
+            from pdf_parser import merge_exam_questions
+
             current = load_exams_store()
-            cur_ids = {e["id"] for e in current.get("exams", [])}
+            exams_list = current.setdefault("exams", [])
+            by_id = {e["id"]: e for e in exams_list}
+            by_title = {
+                (e.get("title") or "").strip().lower(): e
+                for e in exams_list
+                if (e.get("title") or "").strip()
+            }
             for exam in incoming.get("exams", []):
-                if exam.get("id") not in cur_ids:
-                    current.setdefault("exams", []).append(exam)
+                eid = exam.get("id")
+                title_key = (exam.get("title") or "").strip().lower()
+                if eid and eid in by_id:
+                    existing = by_id[eid]
+                    merged_q = merge_exam_questions(
+                        existing.get("questions", []), exam.get("questions", [])
+                    )
+                    if merged_q != existing.get("questions"):
+                        existing["questions"] = merged_q
+                    continue
+                if title_key and title_key in by_title:
+                    existing = by_title[title_key]
+                    merged_q = merge_exam_questions(
+                        existing.get("questions", []), exam.get("questions", [])
+                    )
+                    if merged_q != existing.get("questions"):
+                        existing["questions"] = merged_q
+                    continue
+                exams_list.append(exam)
+                if eid:
+                    by_id[eid] = exam
+                if title_key:
+                    by_title[title_key] = exam
             for eid in incoming.get("active_exam_ids", []):
                 if eid not in current.get("active_exam_ids", []):
                     current.setdefault("active_exam_ids", []).append(eid)
@@ -234,12 +264,18 @@ def restore_full_backup(payload: dict, *, replace: bool = True) -> dict:
             save_leaderboard(board)
         elif key == "exam_submissions":
             subs = load_exam_submissions()
-            existing_ids = {s.get("id") for s in subs}
+            by_id = {s.get("id"): s for s in subs if s.get("id")}
+            no_id = [s for s in subs if not s.get("id")]
             for sub in incoming:
-                if sub.get("id") not in existing_ids:
-                    subs.append(sub)
-                    existing_ids.add(sub.get("id"))
-            save_exam_submissions(subs)
+                sid = sub.get("id")
+                if not sid:
+                    no_id.append(sub)
+                    continue
+                if sid in by_id:
+                    by_id[sid] = merge_exam_submission(by_id[sid], sub)
+                else:
+                    by_id[sid] = sub
+            save_exam_submissions(list(by_id.values()) + no_id)
         elif key == "students":
             current = load_students()
             cur_ids = {s["id"] for s in current}
@@ -270,6 +306,10 @@ def restore_full_backup(payload: dict, *, replace: bool = True) -> dict:
             save_config({**load_config(), **incoming})
         stats["merged"].append(key)
 
+    from quiz_storage import rehydrate_exam_questions_from_store, repair_orphan_exam_submissions
+
+    stats["exam_questions_rehydrated"] = rehydrate_exam_questions_from_store()
+    stats["exam_submissions_relinked"] = repair_orphan_exam_submissions()
     return stats
 
 

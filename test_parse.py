@@ -7,7 +7,12 @@ from app.pdf_helpers import (
     parse_questions_from_upload,
     read_text_from_upload,
 )
-from pdf_parser import exam_summary, parse_exam_from_text, parse_questions_from_text
+from pdf_parser import (
+    exam_summary,
+    merge_exam_questions,
+    parse_exam_from_text,
+    parse_questions_from_text,
+)
 
 SAMPLE_TEXT = """
 Pergunta 1: O que é uma variável?
@@ -269,6 +274,30 @@ class TestMarkdownUpload(unittest.TestCase):
         uploaded = io.BytesIO(content)
         uploaded.name = "notas.md"
         self.assertIn("Pergunta 1", read_text_from_upload(uploaded))
+
+
+class TestMergeExamQuestions(unittest.TestCase):
+    def test_merge_restores_answer_key_from_backup(self):
+        current = [
+            {
+                "type": "choice",
+                "question": "Q1",
+                "options": ["a", "b", "c", "d"],
+                "correct": "B",
+            }
+        ]
+        backup = [
+            {
+                "type": "choice_with_justify",
+                "question": "Q1",
+                "options": ["a", "b", "c", "d"],
+                "correct": "B",
+                "answer_key": "Texto gabarito justificativa",
+            }
+        ]
+        merged = merge_exam_questions(current, backup)
+        self.assertEqual(merged[0]["type"], "choice_with_justify")
+        self.assertEqual(merged[0]["answer_key"], "Texto gabarito justificativa")
 
 
 if __name__ == "__main__":

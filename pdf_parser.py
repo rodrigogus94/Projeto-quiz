@@ -623,6 +623,55 @@ def normalize_exam_questions(questions: list) -> list:
     return [normalize_exam_question(q) for q in questions]
 
 
+def _exam_question_richness(questions: list) -> int:
+    return sum(
+        1
+        for q in questions or []
+        if (q.get("answer_key") or "").strip() or q.get("type") == "choice_with_justify"
+    )
+
+
+def merge_exam_question_fields(current: dict, backup: dict) -> dict:
+    """Mescla metadados da questão, priorizando gabarito/justificativa do backup."""
+    merged = {**current}
+    backup = backup or {}
+    if backup.get("type") == "choice_with_justify":
+        merged["type"] = "choice_with_justify"
+    backup_key = (backup.get("answer_key") or "").strip()
+    if backup_key:
+        merged["answer_key"] = backup_key
+    if backup.get("correct") and not merged.get("correct"):
+        merged["correct"] = backup["correct"]
+    if backup.get("question") and not (merged.get("question") or "").strip():
+        merged["question"] = backup["question"]
+    if backup.get("options") and len(backup.get("options") or []) >= len(
+        merged.get("options") or []
+    ):
+        merged["options"] = backup["options"]
+    return normalize_exam_question(merged)
+
+
+def merge_exam_questions(current: list, backup: list) -> list:
+    """Une questões atuais com as do backup, recuperando answer_key e justificativas."""
+    current = current or []
+    backup = backup or []
+    if not backup:
+        return normalize_exam_questions(current)
+    if not current:
+        return normalize_exam_questions(backup)
+    if _exam_question_richness(backup) > _exam_question_richness(current) and len(backup) != len(
+        current
+    ):
+        return normalize_exam_questions(backup)
+    merged = []
+    for i, cq in enumerate(current):
+        bq = backup[i] if i < len(backup) else {}
+        merged.append(merge_exam_question_fields(cq, bq))
+    for extra in backup[len(current) :]:
+        merged.append(normalize_exam_question(extra))
+    return merged
+
+
 def exam_question_needs_justify(q: dict) -> bool:
     """Questão de prova que exige justificativa além da alternativa marcada."""
     q = normalize_exam_question(q)
