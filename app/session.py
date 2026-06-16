@@ -344,6 +344,29 @@ def exam_attempt_permission(
     ), False
 
 
+def exam_visible_for_student(
+    exam: dict,
+    name: str,
+    email: str | None,
+) -> bool:
+    """Prova visível na lista do aluno: ainda não enviou ou elegível à recuperação."""
+    if not (name or "").strip():
+        return False
+    attempts = exam_submissions_for_student(name, exam["id"], email)
+    if not attempts:
+        return True
+    can_recover, _, _ = exam_attempt_permission(name, exam["id"], email, exam)
+    return can_recover
+
+
+def filter_exams_for_student(
+    exams: list,
+    name: str,
+    email: str | None,
+) -> list:
+    return [e for e in exams if exam_visible_for_student(e, name, email)]
+
+
 def sync_playable_exam(playable_exams: list) -> str | None:
     """Garante prova válida selecionada sem disparar rerun."""
     if not playable_exams:

@@ -64,6 +64,7 @@ from app.components import (
 from app.session import (
     bound_student_name,
     exam_attempt_permission,
+    filter_exams_for_student,
     finish_quiz,
     get_playable_active_materials,
     load_student_material,
@@ -490,7 +491,7 @@ def get_playable_active_exams() -> list:
 
 
 def render_student_exam_tab():
-    playable_exams = get_playable_active_exams()
+    all_playable_exams = get_playable_active_exams()
     registered = approved_students()
 
     if not registered:
@@ -514,7 +515,7 @@ def render_student_exam_tab():
         _render_exam_flow()
         return
 
-    if not playable_exams:
+    if not all_playable_exams:
         render_empty_state(
             icon="📋",
             title="Nenhuma prova disponível",
@@ -524,89 +525,129 @@ def render_student_exam_tab():
         return
 
     col_cfg, col_main = st.columns([1, 2], gap="large")
-    sync_playable_exam(playable_exams)
-    exams_by_id = {e["id"]: e for e in playable_exams}
-    picked_id = st.session_state.selected_exam_id
-    exam = get_exam(picked_id)
+    user = st.session_state.get("current_user") or {}
+    names = sorted(s["name"] for s in registered)
 
     with col_cfg:
         with st.container(border=True):
             st.markdown('<div class="kahoot-config-title">Abrir prova</div>', unsafe_allow_html=True)
-            st.selectbox(
-                "Escolha a prova",
-                options=list(exams_by_id.keys()),
-                format_func=lambda eid: exams_by_id[eid]["title"],
-                key="selected_exam_id",
-            )
-            if exam:
-                summary = exam_summary(exam["questions"])
-                st.caption(
-                    f"**{summary['total']}** questões · "
-                    f"{summary['choice']} múltipla escolha · {summary['justify']} justificativas"
-                )
-                dl = exam_deadline_label(exam)
-                if dl:
-                    if exam_is_past_deadline(exam):
-                        st.warning(f"⏰ Prazo encerrado em **{dl}** — somente revisão.")
-                    else:
-                        st.info(f"⏰ Prazo para envio: **{dl}**")
 
-            names = sorted(s["name"] for s in registered)
             student_name = _render_student_identity(names, "exam_student_name")
-            st.divider()
 
-            user = st.session_state.get("current_user") or {}
-            existing = (
-                student_submission_for_exam(student_name, picked_id, user.get("email"))
-                if student_name and exam
-                else None
+            visible_exams = (
+                filter_exams_for_student(
+                    all_playable_exams, student_name, user.get("email")
+                )
+                if student_name
+                else []
             )
-            past = exam_is_past_deadline(exam) if exam else False
-            can_recover = False
-            recover_msg = ""
-            if existing and exam and student_name and not past:
-                if exam_correction_released(existing):
-                    can_recover, recover_msg, _ = exam_attempt_permission(
-                        student_name, picked_id, user.get("email"), exam
-                    )
-                else:
-                    recover_msg = (
-                        "Após o professor **devolver a prova corrigida**, você verá aqui "
-                        "se tem direito à recuperação."
-                    )
-            if existing and can_recover:
-                btn_label = "🔄 Fazer recuperação"
-            elif existing:
-                btn_label = "👁️ Ver prova enviada"
-            elif past:
-                btn_label = "👁️ Revisar prova (somente leitura)"
+
+            if not student_name:
+                st.caption("Selecione seu nome para ver as provas disponíveis.")
+            elif not visible_exams:
+                st.info(
+                    "Você não tem provas pendentes no momento. "
+                    "Provas já enviadas (e concluídas) ficam em **Minhas provas enviadas** abaixo."
+                )
             else:
-                btn_label = "📋 Responder prova"
+                sync_playable_exam(visible_exams)
+                exams_by_id = {e["id"]: e for e in visible_exams}
+                picked_id = st.session_state.selected_exam_id
+                exam = get_exam(picked_id)
 
-            if can_recover and recover_msg:
-                st.info(recover_msg)
-            elif existing and recover_msg and not past and not exam_correction_released(existing):
-                st.caption(recover_msg)
+                st.selectbox(
+                    "Escolha a prova",
+                    options=list(exams_by_id.keys()),
+                    format_func=lambda eid: exams_by_id[eid]["title"],
+                    key="selected_exam_id",
+                )
+                if exam:
+                    summary = exam_summary(exam["questions"])
+                    st.caption(
+                        f"**{summary['total']}** questões · "
+                        f"{summary['choice']} múltipla escolha · {summary['justify']} justificativas"
+                    )
+                    dl = exam_deadline_label(exam)
+                    if dl:
+                        if exam_is_past_deadline(exam):
+                            st.warning(f"⏰ Prazo encerrado em **{dl}** — somente revisão.")
+                        else:
+                            st.info(f"⏰ Prazo para envio: **{dl}**")
 
-            if st.button(btn_label, type="primary", use_container_width=True) and student_name:
-                st.session_state.current_student_name = student_name
-                st.session_state.preferred_student_name = student_name
-                if past or (existing and not can_recover):
-                    _start_exam_session(picked_id, mode="review", submission=existing)
+                st.divider()
+
+                existing = (
+                    student_submission_for_exam(student_name, picked_id, user.get("email"))
+                    if exam
+                    else None
+                )
+                past = exam_is_past_deadline(exam) if exam else False
+                can_recover = False
+                recover_msg = ""
+                if existing and exam and not past:
+                    if exam_correction_released(existing):
+                        can_recover, recover_msg, _ = exam_attempt_permission(
+                            student_name, picked_id, user.get("email"), exam
+                        )
+                    else:
+                        recover_msg = (
+                            "Após o professor **devolver a prova corrigida**, você verá aqui "
+                            "se tem direito à recuperação."
+                        )
+                if existing and can_recover:
+                    btn_label = "🔄 Fazer recuperação"
+                elif existing:
+                    btn_label = "👁️ Ver prova enviada"
+                elif past:
+                    btn_label = "👁️ Revisar prova (somente leitura)"
                 else:
-                    _start_exam_session(picked_id, mode="take")
-                st.rerun()
-            elif not student_name:
-                st.caption("Selecione seu nome para abrir a prova.")
+                    btn_label = "📋 Responder prova"
+
+                if can_recover and recover_msg:
+                    st.info(recover_msg)
+                elif existing and recover_msg and not past and not exam_correction_released(existing):
+                    st.caption(recover_msg)
+
+                if st.button(btn_label, type="primary", use_container_width=True) and exam:
+                    st.session_state.current_student_name = student_name
+                    st.session_state.preferred_student_name = student_name
+                    if past or (existing and not can_recover):
+                        _start_exam_session(picked_id, mode="review", submission=existing)
+                    else:
+                        _start_exam_session(picked_id, mode="take")
+                    st.rerun()
+
+    picker_name = st.session_state.get("exam_student_name") or bound_student_name() or ""
+    visible_for_student = (
+        filter_exams_for_student(all_playable_exams, picker_name, user.get("email"))
+        if picker_name
+        else []
+    )
 
     with col_main:
-        if exam:
-            summary = exam_summary(exam["questions"])
-            render_student_hero(
-                exam["title"],
-                f"Prova com {summary['total']} questões. Responda com calma e envie ao final.",
+        if visible_for_student:
+            exam = get_exam(st.session_state.selected_exam_id)
+            if exam and exam["id"] in {e["id"] for e in visible_for_student}:
+                summary = exam_summary(exam["questions"])
+                render_student_hero(
+                    exam["title"],
+                    f"Prova com {summary['total']} questões. Responda com calma e envie ao final.",
+                )
+        elif picker_name:
+            render_empty_state(
+                icon="✅",
+                title="Nenhuma prova pendente",
+                message=(
+                    "Você já concluiu as provas disponíveis ou está aguardando a devolução "
+                    "do professor para saber se tem recuperação."
+                ),
+                hint="Consulte **Minhas provas enviadas** abaixo para revisar o que já enviou.",
             )
-        st.metric("Provas ativas", len(playable_exams))
+
+        st.metric(
+            "Provas pendentes" if picker_name else "Provas ativas",
+            len(visible_for_student) if picker_name else len(all_playable_exams),
+        )
 
         st.divider()
         _render_my_exam_history()
