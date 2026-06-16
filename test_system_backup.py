@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from app.result_transfer import import_results, parse_student_export, preview_import
 from quiz_storage import (
+    best_submissions_for_exam,
     repair_orphan_exam_submissions,
     resolve_exam_id_for_submission,
     submissions_for_exam,
@@ -125,6 +126,30 @@ class TestExamSubmissionLinking(unittest.TestCase):
             matched = submissions_for_exam("new-exam")
             self.assertEqual(len(matched), 1)
             self.assertEqual(matched[0]["student_name"], "Aluno")
+
+    def test_best_submissions_for_exam_picks_highest_score(self):
+        exams = [{"id": "exam-1", "title": "Prova 1", "questions": []}]
+        subs = [
+            {
+                "id": "sub-1",
+                "exam_id": "exam-1",
+                "student_name": "Aluno",
+                "summary": {"total_points": 14.0, "max_points": 20, "percent": 70},
+            },
+            {
+                "id": "sub-2",
+                "exam_id": "exam-1",
+                "student_name": "Aluno",
+                "summary": {"total_points": 17.0, "max_points": 20, "percent": 85},
+            },
+        ]
+        with patch("quiz_storage.list_exams", return_value=exams), patch(
+            "quiz_storage.get_exam",
+            return_value=exams[0],
+        ), patch("quiz_storage.load_exam_submissions", return_value=subs):
+            best = best_submissions_for_exam("exam-1")
+            self.assertEqual(len(best), 1)
+            self.assertEqual(best[0]["id"], "sub-2")
 
 
 class TestExamResultImport(unittest.TestCase):

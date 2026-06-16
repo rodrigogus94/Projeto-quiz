@@ -66,6 +66,7 @@ from app.admin_views import render_admin_approvals_tab, render_auth_config_tab
 from app.charts import (
     plot_attempts_comparison,
     plot_completion_donut,
+    plot_exam_ranking,
     plot_leaderboard_comparison,
     plot_question_performance,
     plot_score_distribution,
@@ -81,6 +82,72 @@ from app.pdf_helpers import (
     parse_questions_from_upload,
     validate_questions,
 )
+
+
+def _normalize_exam_submission_summary(sub: dict) -> dict:
+    """Garante summary com total_points, max_points e percent para o ranking."""
+    answers = sub.get("answers") or []
+    summary = sub.get("summary")
+    if not summary and answers:
+        return summarize_answers(answers)
+    if not summary:
+        return {}
+    summary = dict(summary)
+    if (not summary.get("max_points")) and answers:
+        recomputed = summarize_answers(answers)
+        summary = {**recomputed, **summary}
+    total_points = float(summary.get("total_points", 0))
+    max_points = float(summary.get("max_points") or len(answers) or 0)
+    if max_points and "percent" not in summary:
+        summary["percent"] = total_points / max_points * 100
+    summary.setdefault("max_points", max_points)
+    summary.setdefault("total_points", total_points)
+    summary.setdefault("percent", 0.0)
+    return summary
+
+
+def _exam_ranking_dataframe(submissions: list[dict]) -> pd.DataFrame:
+    rows = []
+    for sub in submissions:
+        summary = _normalize_exam_submission_summary(sub)
+        counts = summary.get("counts") or {}
+        attempt = sub.get("attempt", 1)
+        name = sub.get("student_name", "—")
+        if attempt > 1:
+            name = f"{name} (tent. {attempt})"
+        rows.append(
+            {
+                "Aluno": name,
+                "Pontos": float(summary.get("total_points", 0)),
+                "Máx": float(summary.get("max_points", 0)),
+                "Percentual": round(float(summary.get("percent", 0)), 1),
+                "MC corretas": summary.get("mc_correct", counts.get("A", 0)),
+                "A": counts.get("A", 0),
+                "PA": counts.get("PA", 0),
+                "NA": counts.get("NA", 0),
+                "Correção liberada": "Sim" if exam_correction_released(sub) else "Não",
+                "Enviada (UTC)": (sub.get("submitted_at") or "—")[:16].replace("T", " "),
+            }
+        )
+    if not rows:
+        return pd.DataFrame()
+    df = pd.DataFrame(rows).sort_values("Percentual", ascending=False)
+    df["Pontos"] = df["Pontos"].map(lambda x: f"{x:.2f}")
+    df["Máx"] = df["Máx"].map(lambda x: f"{x:.0f}")
+    return df.reset_index(drop=True)
+
+
+def _exam_ranking_chart_entries(submissions: list[dict]) -> list[dict]:
+    entries = []
+    for sub in submissions:
+        summary = _normalize_exam_submission_summary(sub)
+        entries.append(
+            {
+                "name": sub.get("student_name", "—"),
+                "percent": float(summary.get("percent", 0)),
+            }
+        )
+    return entries
 
 
 def render_question_editor(questions: list, key_prefix: str) -> list:
@@ -894,10 +961,12 @@ def render_exam_results_tab():
 
     exam_id = exam_options[picked_title]
     exam = get_exam(exam_id)
-    submissions = best_submissions_for_exam(exam_id)
     all_attempts = submissions_for_exam(exam_id)
+    submissions = best_submissions_for_exam(exam_id)
+    if not submissions and all_attempts:
+        submissions = all_attempts
 
-    if not submissions:
+    if not all_attempts:
         orphans = count_orphan_exam_submissions()
         if orphans:
             st.warning(
@@ -925,28 +994,16 @@ def render_exam_results_tab():
                 st.write(", ".join(sorted(registered)))
         return
 
-    rows = []
-    for sub in submissions:
-        summary = sub.get("summary") or summarize_answers(sub.get("answers", []))
-        counts = summary.get("counts", {})
-        rows.append(
-            {
-                "Aluno": sub.get("student_name", "—"),
-                "Pontos": f"{summary.get('total_points', 0):.2f}",
-                "Máx": f"{summary.get('max_points', 0):.0f}",
-                "%": round(summary.get("percent", 0), 1),
-                "MC corretas": summary.get("mc_correct", counts.get("A", 0)),
-                "A": counts.get("A", 0),
-                "PA": counts.get("PA", 0),
-                "NA": counts.get("NA", 0),
-                "Correção liberada": "Sim" if exam_correction_released(sub) else "Não",
-                "Enviada (UTC)": (sub.get("submitted_at") or "—")[:16].replace("T", " "),
-            }
+    df = _exam_ranking_dataframe(submissions)
+    if df.empty:
+        st.warning(
+            "Há envios registrados, mas o ranking não pôde ser montado. "
+            "Verifique se os arquivos importados contêm `summary` ou `answers`."
         )
+        return
 
-    df = pd.DataFrame(rows).sort_values("%", ascending=False)
     responders = len(df)
-    avg_pct = df["%"].mean() if responders else 0.0
+    avg_pct = float(df["Percentual"].mean()) if responders else 0.0
     released_count = int((df["Correção liberada"] == "Sim").sum())
 
     m1, m2, m3, m4 = st.columns(4)
@@ -963,6 +1020,7 @@ def render_exam_results_tab():
             f"Ranking com a **melhor nota** de cada aluno "
             f"({len(all_attempts)} envio(s) no total, incluindo recuperações)."
         )
+    plot_exam_ranking(_exam_ranking_chart_entries(submissions))
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     responder_keys = {n.strip().lower() for n in df["Aluno"]}

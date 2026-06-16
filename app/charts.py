@@ -53,6 +53,27 @@ def plot_leaderboard_comparison(leaderboard):
     _show_figure(fig)
 
 
+def plot_exam_ranking(entries: list[dict]):
+    """Gráfico de barras com o percentual de cada aluno na prova."""
+    if not entries:
+        st.info("Nenhum envio para exibir no ranking.")
+        return
+    pal = chart_palette()
+    df = pd.DataFrame(entries)
+    df = df.sort_values("percent", ascending=False)
+    height = max(3.0, len(df) * 0.45)
+    fig, ax = plt.subplots(figsize=(8, height))
+    ax.barh(df["name"], df["percent"], color=pal["bar"])
+    ax.set_xlabel("Nota (%)")
+    ax.set_title("Ranking da prova")
+    ax.invert_yaxis()
+    ax.set_xlim(0, max(100, df["percent"].max() + 5))
+    style_matplotlib_figure(fig, ax)
+    for i, v in enumerate(df["percent"]):
+        ax.text(v + 0.5, i, f"{v:.1f}%", va="center", color=pal["text"])
+    _show_figure(fig)
+
+
 def plot_score_distribution(best_scores: list[int], total_questions: int):
     """Quantos alunos ficaram em cada nota (melhor tentativa de cada um)."""
     if not best_scores or total_questions <= 0:
