@@ -23,6 +23,7 @@ from quiz_storage import (
     add_exam_submission,
     exam_deadline_label,
     exam_is_past_deadline,
+    exam_submissions_for_student,
     get_active_exams,
     get_active_materials,
     get_exam,
@@ -62,6 +63,7 @@ from app.components import (
 )
 from app.session import (
     bound_student_name,
+    exam_attempt_permission,
     finish_quiz,
     get_playable_active_materials,
     load_student_material,
@@ -312,8 +314,12 @@ def _render_my_exam_history():
         return
     for s in reversed(mine):
         exam = get_exam(s.get("exam_id") or "")
+        attempt = s.get("attempt") or 1
+        title = exam["title"] if exam else "(prova removida)"
+        if attempt > 1:
+            title = f"{title} · tentativa {attempt}"
         render_history_item(
-            title=exam["title"] if exam else "(prova removida)",
+            title=title,
             meta=f"🕑 {_format_when(s.get('submitted_at'))} (UTC)",
             badge_text="Enviada",
             badge_tone="neutral",
@@ -556,17 +562,28 @@ def render_student_exam_tab():
                 else None
             )
             past = exam_is_past_deadline(exam) if exam else False
-            if existing:
+            can_recover = False
+            recover_msg = ""
+            if existing and exam and student_name and not past:
+                can_recover, recover_msg, _ = exam_attempt_permission(
+                    student_name, picked_id, user.get("email"), exam
+                )
+            if existing and can_recover:
+                btn_label = "🔄 Fazer recuperação"
+            elif existing:
                 btn_label = "👁️ Ver prova enviada"
             elif past:
                 btn_label = "👁️ Revisar prova (somente leitura)"
             else:
                 btn_label = "📋 Responder prova"
 
+            if can_recover and recover_msg:
+                st.info(recover_msg)
+
             if st.button(btn_label, type="primary", use_container_width=True) and student_name:
                 st.session_state.current_student_name = student_name
                 st.session_state.preferred_student_name = student_name
-                if past or existing:
+                if past or (existing and not can_recover):
                     _start_exam_session(picked_id, mode="review", submission=existing)
                 else:
                     _start_exam_session(picked_id, mode="take")
@@ -819,9 +836,16 @@ def _render_exam_flow():
         user.get("email"),
     )
     if prior:
-        st.session_state.exam_submission_result = prior
-        st.session_state.exam_mode = "review"
-        st.rerun()
+        can_recover, _, _ = exam_attempt_permission(
+            st.session_state.current_student_name,
+            exam["id"],
+            user.get("email"),
+            exam,
+        )
+        if not can_recover:
+            st.session_state.exam_submission_result = prior
+            st.session_state.exam_mode = "review"
+            st.rerun()
 
     total_q = len(exam["questions"])
     render_flow_header(
@@ -910,6 +934,13 @@ def _render_exam_flow():
 
             summary = summarize_answers(graded)
             user = st.session_state.get("current_user") or {}
+            prior_count = len(
+                exam_submissions_for_student(
+                    st.session_state.current_student_name,
+                    exam["id"],
+                    user.get("email"),
+                )
+            )
             submission = {
                 "id": str(uuid.uuid4()),
                 "exam_id": exam["id"],
@@ -919,6 +950,8 @@ def _render_exam_flow():
                 "summary": summary,
                 "submitted_at": datetime.now(timezone.utc).isoformat(),
                 "correction_released": False,
+                "attempt": prior_count + 1,
+                "is_recovery": prior_count >= 1,
             }
             add_exam_submission(submission)
             st.session_state.exam_submission_result = submission
@@ -1005,6 +1038,24 @@ def _render_exam_results(*, read_only: bool = False):
         "desta prova e dos quizzes concluídos."
     )
     _render_results_download("dl_results_exam_done")
+
+    exam_obj = get_exam(result.get("exam_id"))
+    can_recover, recover_msg, _ = exam_attempt_permission(
+        result.get("student_name", ""),
+        result.get("exam_id", ""),
+        result.get("student_email"),
+        exam_obj,
+    )
+    if can_recover:
+        st.info(recover_msg)
+        if st.button(
+            "🔄 Fazer recuperação da prova",
+            type="primary",
+            key="exam_recovery_retry",
+            use_container_width=True,
+        ):
+            _start_exam_session(result["exam_id"], mode="take")
+            st.rerun()
 
     back_label = "↩️ Voltar às provas"
     if st.button(back_label, type="primary"):

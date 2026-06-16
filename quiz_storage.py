@@ -519,9 +519,17 @@ def exam_deadline_label(exam: dict) -> str | None:
     return format_deadline_br(exam.get("deadline_at"))
 
 
-def student_submission_for_exam(
+def _student_submission_key(sub: dict) -> str:
+    email = (sub.get("student_email") or "").strip().lower()
+    if email:
+        return f"email:{email}"
+    return f"name:{_normalize_name(sub.get('student_name', ''))}"
+
+
+def exam_submissions_for_student(
     student_name: str, exam_id: str, student_email: str | None = None
-) -> dict | None:
+) -> list[dict]:
+    """Todas as tentativas do aluno nesta prova, em ordem de envio."""
     name_key = _normalize_name(student_name)
     email_key = (student_email or "").strip().lower()
     matches = []
@@ -532,7 +540,30 @@ def student_submission_for_exam(
             matches.append(s)
         elif email_key and (s.get("student_email") or "").strip().lower() == email_key:
             matches.append(s)
-    return matches[-1] if matches else None
+    matches.sort(key=lambda s: s.get("submitted_at") or "")
+    return matches
+
+
+def student_submission_for_exam(
+    student_name: str, exam_id: str, student_email: str | None = None
+) -> dict | None:
+    attempts = exam_submissions_for_student(student_name, exam_id, student_email)
+    return attempts[-1] if attempts else None
+
+
+def _submission_total_points(sub: dict) -> float:
+    summary = sub.get("summary") or {}
+    if summary.get("total_points") is not None:
+        return float(summary["total_points"])
+    return sum(float(a.get("points", 0)) for a in sub.get("answers") or [])
+
+
+def best_submissions_for_exam(exam_id: str) -> list[dict]:
+    """Uma entrada por aluno — a tentativa com maior nota."""
+    grouped: dict[str, list[dict]] = {}
+    for sub in submissions_for_exam(exam_id):
+        grouped.setdefault(_student_submission_key(sub), []).append(sub)
+    return [max(subs, key=_submission_total_points) for subs in grouped.values()]
 
 
 def repair_exams_questions() -> int:

@@ -16,6 +16,28 @@ LABELS = {
 # Recuperação por justificativa em questões UC2 com MC errada.
 UC2_RECOVERY_POINTS = {"A": 0.5, "PA": 0.25, "NA": 0.0}
 
+# Meta da prova (1ª tentativa): 17+ acertos na MC e nota A (17+ pts em prova de 20).
+EXAM_RECOVERY_MIN_MC = 17
+EXAM_RECOVERY_MIN_POINTS = 17
+EXAM_MAX_ATTEMPTS = 2
+
+
+def exam_passing_minimum(total_questions: int) -> int:
+    """Limite mínimo de acertos/nota A, proporcional se a prova tiver menos de 17 questões."""
+    return min(EXAM_RECOVERY_MIN_MC, max(1, int(total_questions)))
+
+
+def exam_needs_recovery(summary: dict, total_questions: int) -> bool:
+    """True se o aluno pode fazer recuperação (não atingiu 17 MC ou nota A)."""
+    minimum = exam_passing_minimum(total_questions)
+    total_points = float(summary.get("total_points", 0))
+    if summary.get("grading_model") == "uc2_recovery":
+        mc_correct = int(summary.get("mc_correct", 0))
+        return mc_correct < minimum or total_points < minimum
+    counts = summary.get("counts") or {}
+    a_count = int(counts.get("A", 0))
+    return a_count < minimum or total_points < minimum
+
 
 def _normalize(text: str) -> str:
     text = text.lower().strip()

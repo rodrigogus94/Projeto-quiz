@@ -4,6 +4,8 @@ from auto_grade import (
     CLASSIFICATIONS,
     classify_choice,
     classify_justify,
+    exam_needs_recovery,
+    exam_passing_minimum,
     grade_choice_with_justify,
     grade_justify_answer,
     summarize_answers,
@@ -75,6 +77,22 @@ class TestAutoGrade(unittest.TestCase):
         self.assertEqual(s["counts"]["A"], 1)
         self.assertEqual(s["counts"]["PA"], 1)
         self.assertEqual(s["total_points"], 1.5)
+
+    def test_exam_needs_recovery_uc2_below_mc(self):
+        s = {"grading_model": "uc2_recovery", "mc_correct": 16, "total_points": 18.0}
+        self.assertTrue(exam_needs_recovery(s, 20))
+
+    def test_exam_needs_recovery_uc2_below_points(self):
+        s = {"grading_model": "uc2_recovery", "mc_correct": 17, "total_points": 16.5}
+        self.assertTrue(exam_needs_recovery(s, 20))
+
+    def test_exam_passed_uc2_no_recovery(self):
+        s = {"grading_model": "uc2_recovery", "mc_correct": 17, "total_points": 17.0}
+        self.assertFalse(exam_needs_recovery(s, 20))
+
+    def test_exam_passing_minimum_scales(self):
+        self.assertEqual(exam_passing_minimum(20), 17)
+        self.assertEqual(exam_passing_minimum(10), 10)
 
 
 if __name__ == "__main__":

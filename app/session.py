@@ -6,10 +6,14 @@ import streamlit as st
 
 import auth_users
 import quiz_storage
+from auto_grade import EXAM_MAX_ATTEMPTS, exam_needs_recovery, exam_passing_minimum
 from google_auth import clear_oauth_session
 from quiz_storage import (
     append_leaderboard_entry,
+    exam_is_past_deadline,
+    exam_submissions_for_student,
     get_active_materials,
+    get_exam,
     get_material,
     leaderboard_for_material,
     load_leaderboard,
@@ -273,6 +277,62 @@ def on_quiz_material_changed() -> None:
     load_student_material(st.session_state.selected_material_id)
     st.session_state.quiz_active = False
     st.session_state.quiz_finished = False
+
+
+def exam_attempt_permission(
+    name: str,
+    exam_id: str,
+    email: str | None,
+    exam: dict | None = None,
+) -> tuple[bool, str, bool]:
+    """Recuperação da prova: 2ª tentativa se MC < 17 ou nota < A (17 pts).
+
+    Retorna (pode_refazer, mensagem, precisa_confirmar).
+    """
+    exam = exam or get_exam(exam_id)
+    if exam and exam_is_past_deadline(exam):
+        return False, "O prazo de envio já encerrou — recuperação indisponível.", False
+
+    attempts = exam_submissions_for_student(name, exam_id, email)
+    if not attempts:
+        return True, "", False
+
+    if len(attempts) >= EXAM_MAX_ATTEMPTS:
+        best = max(
+            attempts,
+            key=lambda s: float((s.get("summary") or {}).get("total_points", 0)),
+        )
+        sm = best.get("summary") or {}
+        pts = sm.get("total_points", 0)
+        mx = sm.get("max_points", 0)
+        return False, (
+            f"Você já usou suas **{EXAM_MAX_ATTEMPTS}** tentativas nesta prova "
+            f"(melhor nota: **{pts:.1f}/{mx:.0f}** pts)."
+        ), False
+
+    latest = attempts[-1]
+    summary = latest.get("summary") or {}
+    total_q = int(summary.get("max_points") or len(latest.get("answers") or []))
+    if exam and not total_q:
+        total_q = len(exam.get("questions") or [])
+
+    minimum = exam_passing_minimum(total_q)
+    if not exam_needs_recovery(summary, total_q):
+        mc = summary.get("mc_correct", (summary.get("counts") or {}).get("A", 0))
+        return False, (
+            f"Você atingiu a meta desta prova "
+            f"(**{mc}** acertos na MC e **{summary.get('total_points', 0):.1f}** pts — "
+            f"meta: **{minimum}+**). Recuperação não necessária."
+        ), False
+
+    mc = summary.get("mc_correct", (summary.get("counts") or {}).get("A", 0))
+    pts = summary.get("total_points", 0)
+    return True, (
+        f"**Recuperação disponível:** na 1ª tentativa você teve "
+        f"**{mc}** acertos na múltipla escolha e **{pts:.1f}** pts. "
+        f"Meta para aprovação: **{minimum}+** acertos e nota A (**{minimum}+** pts). "
+        f"Você pode fazer **1** recuperação."
+    ), False
 
 
 def sync_playable_exam(playable_exams: list) -> str | None:

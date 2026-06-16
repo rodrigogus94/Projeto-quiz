@@ -45,6 +45,7 @@ from quiz_storage import (
     exam_correction_released,
     repair_orphan_exam_submissions,
     set_exam_correction_released,
+    best_submissions_for_exam,
     submissions_for_exam,
     toggle_exam_active,
     toggle_material_active,
@@ -438,9 +439,11 @@ def render_exams_tab():
 
     st.markdown("#### Exportar PDF")
     st.caption("PDF no formato da prova com nome completo e respostas do aluno.")
-    export_names = [s["student_name"] for s in submissions]
-    pick_name = st.selectbox("Aluno para exportar", export_names, key="export_pick_student")
-    pick_sub = next(s for s in submissions if s["student_name"] == pick_name)
+    export_labels = [
+        f"{s['student_name']} (tent. {s.get('attempt', 1)})" for s in submissions
+    ]
+    pick_label = st.selectbox("Aluno para exportar", export_labels, key="export_pick_student")
+    pick_sub = submissions[export_labels.index(pick_label)]
     dl1, dl2 = st.columns(2)
     with dl1:
         st.download_button(
@@ -465,18 +468,19 @@ def render_exams_tab():
 
     st.markdown("---")
 
-    for sub in submissions:
+    for sub in sorted(submissions, key=lambda s: (s.get("student_name", ""), s.get("attempt", 1))):
         summary = sub.get("summary") or summarize_answers(sub["answers"])
         c = summary["counts"]
+        attempt_tag = f" · tent. {sub.get('attempt', 1)}" if sub.get("attempt", 1) > 1 else ""
         if summary.get("grading_model") == "uc2_recovery":
             label = (
-                f"{sub['student_name']} — MC:{summary.get('mc_correct', 0)}/"
+                f"{sub['student_name']}{attempt_tag} — MC:{summary.get('mc_correct', 0)}/"
                 f"{int(summary['max_points'])} · +{summary.get('recovery_points', 0):.1f} rec — "
                 f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
             )
         else:
             label = (
-                f"{sub['student_name']} — "
+                f"{sub['student_name']}{attempt_tag} — "
                 f"A:{c['A']} | PA:{c['PA']} | NA:{c['NA']} — "
                 f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
             )
@@ -885,7 +889,8 @@ def render_exam_results_tab():
 
     exam_id = exam_options[picked_title]
     exam = get_exam(exam_id)
-    submissions = submissions_for_exam(exam_id)
+    submissions = best_submissions_for_exam(exam_id)
+    all_attempts = submissions_for_exam(exam_id)
 
     if not submissions:
         orphans = count_orphan_exam_submissions()
@@ -948,6 +953,11 @@ def render_exam_results_tab():
         m4.metric("Questões", summary_ex.get("total", 0))
 
     st.markdown("#### 👥 Ranking da prova")
+    if len(all_attempts) > len(submissions):
+        st.caption(
+            f"Ranking com a **melhor nota** de cada aluno "
+            f"({len(all_attempts)} envio(s) no total, incluindo recuperações)."
+        )
     st.dataframe(df, use_container_width=True, hide_index=True)
 
     responder_keys = {n.strip().lower() for n in df["Aluno"]}
