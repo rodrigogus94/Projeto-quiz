@@ -10,6 +10,7 @@ from auto_grade import EXAM_MAX_ATTEMPTS, exam_needs_recovery, exam_passing_mini
 from google_auth import clear_oauth_session
 from quiz_storage import (
     append_leaderboard_entry,
+    exam_correction_released,
     exam_is_past_deadline,
     exam_submissions_for_student,
     get_active_materials,
@@ -317,6 +318,14 @@ def exam_attempt_permission(
         total_q = len(exam.get("questions") or [])
 
     minimum = exam_passing_minimum(total_q)
+
+    if not exam_correction_released(latest):
+        return False, (
+            f"Aguarde o professor **devolver a prova corrigida**. "
+            f"Depois da devolução, você verá aqui se tem direito à **recuperação** "
+            f"(meta: **{minimum}+** acertos na MC e nota A)."
+        ), False
+
     if not exam_needs_recovery(summary, total_q):
         mc = summary.get("mc_correct", (summary.get("counts") or {}).get("A", 0))
         return False, (

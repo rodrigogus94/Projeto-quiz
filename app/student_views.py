@@ -565,9 +565,15 @@ def render_student_exam_tab():
             can_recover = False
             recover_msg = ""
             if existing and exam and student_name and not past:
-                can_recover, recover_msg, _ = exam_attempt_permission(
-                    student_name, picked_id, user.get("email"), exam
-                )
+                if exam_correction_released(existing):
+                    can_recover, recover_msg, _ = exam_attempt_permission(
+                        student_name, picked_id, user.get("email"), exam
+                    )
+                else:
+                    recover_msg = (
+                        "Após o professor **devolver a prova corrigida**, você verá aqui "
+                        "se tem direito à recuperação."
+                    )
             if existing and can_recover:
                 btn_label = "🔄 Fazer recuperação"
             elif existing:
@@ -579,6 +585,8 @@ def render_student_exam_tab():
 
             if can_recover and recover_msg:
                 st.info(recover_msg)
+            elif existing and recover_msg and not past and not exam_correction_released(existing):
+                st.caption(recover_msg)
 
             if st.button(btn_label, type="primary", use_container_width=True) and student_name:
                 st.session_state.current_student_name = student_name
@@ -1046,18 +1054,26 @@ def _render_exam_results(*, read_only: bool = False):
         result.get("student_email"),
         exam_obj,
     )
-    if can_recover:
-        st.info(recover_msg)
-        if st.button(
-            "🔄 Fazer recuperação da prova",
-            type="primary",
-            key="exam_recovery_retry",
-            use_container_width=True,
-        ):
-            _start_exam_session(result["exam_id"], mode="take")
-            st.rerun()
+    if released:
+        if can_recover:
+            st.warning(recover_msg)
+            if st.button(
+                "🔄 Fazer recuperação da prova",
+                type="primary",
+                key="exam_recovery_retry",
+                use_container_width=True,
+            ):
+                _start_exam_session(result["exam_id"], mode="take")
+                st.rerun()
+        elif recover_msg:
+            st.info(recover_msg)
+    elif not read_only:
+        st.caption(
+            "Após o professor **devolver a prova corrigida**, você verá aqui "
+            "se tem direito à recuperação (meta: 17+ acertos na MC e nota A)."
+        )
 
-    back_label = "↩️ Voltar às provas"
-    if st.button(back_label, type="primary"):
-        _clear_exam_session()
-        st.rerun()
+    if read_only:
+        if st.button("↩️ Voltar às provas", type="primary", key="exam_results_back"):
+            _clear_exam_session()
+            st.rerun()
