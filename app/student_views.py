@@ -293,18 +293,92 @@ def _render_my_quiz_history():
     _render_results_download("dl_results_quiz_history")
 
 
-def _render_my_exam_history():
-    """Provas já enviadas pelo aluno — persistidas entre sessões."""
-    email, name_key = _my_identity_keys()
-    if not name_key and not email:
-        return
+def _exam_student_identity() -> tuple[str, str | None]:
+    """Nome e e-mail do aluno na área de provas (conta ou seleção manual)."""
+    user = st.session_state.get("current_user") or {}
+    email = (user.get("email") or "").strip().lower() or None
+    name = (
+        bound_student_name()
+        or st.session_state.get("exam_student_name")
+        or st.session_state.get("current_student_name")
+        or ""
+    ).strip()
+    return name, email
 
+
+def _submissions_for_student(name: str, email: str | None) -> list[dict]:
+    name_key = name.strip().lower()
+    email_key = (email or "").strip().lower()
+    if not name_key and not email_key:
+        return []
     mine = [
         s
         for s in load_exam_submissions()
         if (name_key and s.get("student_name", "").strip().lower() == name_key)
-        or (email and (s.get("student_email") or "").strip().lower() == email)
+        or (email_key and (s.get("student_email") or "").strip().lower() == email_key)
     ]
+    mine.sort(key=lambda s: s.get("submitted_at") or "")
+    return mine
+
+
+def _open_exam_submission(submission: dict) -> None:
+    st.session_state.current_student_name = submission.get("student_name", "")
+    st.session_state.preferred_student_name = st.session_state.current_student_name
+    _start_exam_session(
+        submission["exam_id"],
+        mode="review",
+        submission=submission,
+    )
+
+
+def _render_returned_exams(student_name: str, student_email: str | None) -> int:
+    """Lista provas corrigidas e devolvidas pelo professor."""
+    returned = [
+        s for s in _submissions_for_student(student_name, student_email)
+        if exam_correction_released(s)
+    ]
+    if not returned:
+        return 0
+
+    st.markdown("#### ✅ Provas devolvidas")
+    st.caption("Correção liberada pelo professor — veja nota, acertos e gabarito.")
+
+    for s in reversed(returned):
+        exam = get_exam(s.get("exam_id") or "")
+        attempt = s.get("attempt") or 1
+        title = exam["title"] if exam else "(prova removida)"
+        if attempt > 1:
+            title = f"{title} · tentativa {attempt}"
+        summary = s.get("summary") or summarize_answers(s.get("answers") or [])
+        pts = summary.get("total_points", 0)
+        mx = summary.get("max_points", 0)
+        pct = summary.get("percent", 0)
+        meta = (
+            f"🕑 {_format_when(s.get('submitted_at'))} (UTC) · "
+            f"Nota: **{pts:.1f}/{mx:.0f}** ({pct:.0f}%)"
+        )
+        col_info, col_btn = st.columns([5, 1], vertical_alignment="center")
+        with col_info:
+            render_history_item(
+                title=title,
+                meta=meta,
+                badge_text="Devolvida",
+                badge_tone="good",
+            )
+        with col_btn:
+            if st.button("Ver", key=f"open_returned_{s['id']}", use_container_width=True):
+                _open_exam_submission(s)
+                st.rerun()
+    return len(returned)
+
+
+def _render_my_exam_history(student_name: str = "", student_email: str | None = None):
+    """Provas já enviadas pelo aluno — persistidas entre sessões."""
+    if not student_name and not student_email:
+        student_name, student_email = _exam_student_identity()
+
+    mine = _submissions_for_student(student_name, student_email)
+    pending = [s for s in mine if not exam_correction_released(s)]
 
     st.markdown("#### 📜 Minhas provas enviadas")
     if not mine:
@@ -313,18 +387,29 @@ def _render_my_exam_history():
             "Assim que enviar, o histórico aparecerá aqui."
         )
         return
-    for s in reversed(mine):
-        exam = get_exam(s.get("exam_id") or "")
-        attempt = s.get("attempt") or 1
-        title = exam["title"] if exam else "(prova removida)"
-        if attempt > 1:
-            title = f"{title} · tentativa {attempt}"
-        render_history_item(
-            title=title,
-            meta=f"🕑 {_format_when(s.get('submitted_at'))} (UTC)",
-            badge_text="Enviada",
-            badge_tone="neutral",
-        )
+
+    if pending:
+        st.caption("Aguardando correção — você pode revisar o que enviou.")
+        for s in reversed(pending):
+            exam = get_exam(s.get("exam_id") or "")
+            attempt = s.get("attempt") or 1
+            title = exam["title"] if exam else "(prova removida)"
+            if attempt > 1:
+                title = f"{title} · tentativa {attempt}"
+            col_info, col_btn = st.columns([5, 1], vertical_alignment="center")
+            with col_info:
+                render_history_item(
+                    title=title,
+                    meta=f"🕑 {_format_when(s.get('submitted_at'))} (UTC)",
+                    badge_text="Aguardando",
+                    badge_tone="neutral",
+                )
+            with col_btn:
+                if st.button("Ver", key=f"open_pending_{s['id']}", use_container_width=True):
+                    _open_exam_submission(s)
+                    st.rerun()
+    else:
+        st.caption("Todas as provas enviadas já foram devolvidas — veja acima em **Provas devolvidas**.")
 
 
 def render_student_panel():
@@ -550,7 +635,7 @@ def render_student_exam_tab():
             elif not visible_exams:
                 st.info(
                     "Você não tem provas pendentes no momento. "
-                    "Provas já enviadas (e concluídas) ficam em **Minhas provas enviadas** abaixo."
+                    "Provas **devolvidas** e envios aguardando correção aparecem abaixo."
                 )
             else:
                 sync_playable_exam(visible_exams)
@@ -644,8 +729,17 @@ def render_student_exam_tab():
                     "Você já concluiu as provas disponíveis ou está aguardando a devolução "
                     "do professor para saber se tem recuperação."
                 ),
-                hint="Consulte **Minhas provas enviadas** abaixo para revisar o que já enviou.",
+                hint="Consulte **Provas devolvidas** e **Minhas provas enviadas** abaixo.",
             )
+
+        returned_count = 0
+        if picker_name:
+            returned_count = _render_returned_exams(picker_name, user.get("email"))
+            if returned_count and not visible_for_student:
+                st.info(
+                    f"Você tem **{returned_count}** prova(s) devolvida(s) pelo professor. "
+                    "Clique em **Ver** para consultar a correção."
+                )
 
         st.metric(
             "Provas pendentes" if picker_name else "Provas ativas",
@@ -653,7 +747,7 @@ def render_student_exam_tab():
         )
 
         st.divider()
-        _render_my_exam_history()
+        _render_my_exam_history(picker_name, user.get("email"))
 
 
 def _render_quiz_flow():
@@ -1037,11 +1131,12 @@ def _render_exam_results(*, read_only: bool = False):
         return
 
     released = exam_correction_released(result)
-    title = (
-        f"Prova enviada, {result['student_name']}!"
-        if not read_only
-        else f"Prova enviada — {result['student_name']}"
-    )
+    if released:
+        title = f"Prova devolvida — {result['student_name']}"
+    elif not read_only:
+        title = f"Prova enviada, {result['student_name']}!"
+    else:
+        title = f"Prova enviada — {result['student_name']}"
     if released:
         summary = result.get("summary") or summarize_answers(result.get("answers") or [])
         msg = (
