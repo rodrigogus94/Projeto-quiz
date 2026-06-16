@@ -215,16 +215,20 @@ QUIZ_SECOND_CHANCE_MIN_SCORE = 6
 QUIZ_MAX_ATTEMPTS = 2
 
 
-def quiz_attempts_for(name: str, material_id: str) -> list:
-    key = name.strip().lower()
+def quiz_attempts_for(name: str, material_id: str, email: str | None = None) -> list:
+    name_key = name.strip().lower()
+    email_key = (email or "").strip().lower()
     return [
         e
         for e in leaderboard_for_material(material_id)
-        if e["name"].strip().lower() == key
+        if (email_key and (e.get("student_email") or "").strip().lower() == email_key)
+        or e["name"].strip().lower() == name_key
     ]
 
 
-def quiz_attempt_permission(name: str, material_id: str) -> tuple[bool, str, bool]:
+def quiz_attempt_permission(
+    name: str, material_id: str, email: str | None = None
+) -> tuple[bool, str, bool]:
     """Regra de tentativas do quiz.
 
     - Menos de 6 acertos: pode refazer direto (segunda oportunidade).
@@ -234,7 +238,7 @@ def quiz_attempt_permission(name: str, material_id: str) -> tuple[bool, str, boo
 
     Retorna (pode_jogar, mensagem, precisa_confirmar).
     """
-    attempts = quiz_attempts_for(name, material_id)
+    attempts = quiz_attempts_for(name, material_id, email)
     if not attempts:
         return True, "", False
 

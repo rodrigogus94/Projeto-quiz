@@ -1,5 +1,6 @@
 import unittest
 import uuid
+from unittest.mock import patch
 
 from auth_users import (
     approve_professor,
@@ -196,6 +197,71 @@ class TestAuthUsers(unittest.TestCase):
         self.assertIsNone(err)
         self.assertEqual(count, 1)
         self.assertIsNotNone(find_student_by_name(name))
+
+
+class TestRenameStudentRecords(unittest.TestCase):
+    def test_rename_student_records_uses_email(self):
+        from quiz_storage import rename_student_records
+
+        board = [
+            {
+                "name": "Nome Antigo",
+                "student_email": "aluno@test.com",
+                "score": 8,
+                "total": 10,
+            }
+        ]
+        subs = [
+            {
+                "id": "sub-1",
+                "student_name": "Nome Antigo",
+                "student_email": "aluno@test.com",
+                "answers": [],
+            }
+        ]
+        students = [
+            {
+                "id": "stu-1",
+                "name": "Nome Antigo",
+                "email": "aluno@test.com",
+            }
+        ]
+        users = [
+            {
+                "id": "usr-1",
+                "role": "student",
+                "name": "Nome Antigo",
+                "email": "aluno@test.com",
+                "active": True,
+                "status": "approved",
+            }
+        ]
+        with patch("quiz_storage.load_leaderboard", return_value=board), patch(
+            "quiz_storage.save_leaderboard"
+        ) as mock_save_board, patch(
+            "quiz_storage.load_exam_submissions", return_value=subs
+        ), patch("quiz_storage.save_exam_submissions") as mock_save_subs, patch(
+            "quiz_storage.load_students", return_value=students
+        ), patch("quiz_storage.save_students") as mock_save_students, patch(
+            "auth_users.load_users", return_value=users
+        ), patch("auth_users.save_users") as mock_save_users:
+            stats = rename_student_records(
+                old_name="Nome Antigo",
+                new_name="Nome Novo",
+                student_email="aluno@test.com",
+            )
+        self.assertEqual(stats["quiz_updated"], 1)
+        self.assertEqual(stats["exam_updated"], 1)
+        self.assertEqual(stats["roster_updated"], 1)
+        self.assertEqual(stats["users_updated"], 1)
+        self.assertEqual(board[0]["name"], "Nome Novo")
+        self.assertEqual(subs[0]["student_name"], "Nome Novo")
+        self.assertEqual(students[0]["name"], "Nome Novo")
+        self.assertEqual(users[0]["name"], "Nome Novo")
+        mock_save_board.assert_called_once()
+        mock_save_subs.assert_called_once()
+        mock_save_students.assert_called_once()
+        mock_save_users.assert_called_once()
 
 
 if __name__ == "__main__":

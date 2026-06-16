@@ -40,6 +40,7 @@ from quiz_storage import (
     load_leaderboard,
     load_students,
     purge_student_results,
+    resolve_roster_student_email,
     student_quiz_stats,
     count_orphan_exam_submissions,
     exam_correction_released,
@@ -209,10 +210,11 @@ def render_students_tab():
     st.markdown(f"**Total:** {len(students)} aluno(s)")
     rows = []
     for s in sorted(students, key=lambda x: x["name"].lower()):
-        stats = student_quiz_stats(s["name"])
+        stats = student_quiz_stats(s["name"], resolve_roster_student_email(s))
         rows.append(
             {
                 "Nome": s["name"],
+                "E-mail": resolve_roster_student_email(s) or "—",
                 "Tentativas": stats["attempts"],
                 "Média %": f"{stats['avg_pct']:.1f}" if stats["avg_pct"] is not None else "—",
                 "Último resultado": stats["last_score"] or "—",
@@ -236,7 +238,9 @@ def render_students_tab():
                     if err:
                         st.error(err)
                     else:
-                        st.success("Aluno atualizado.")
+                        st.success(
+                            "Aluno atualizado — nome sincronizado em quizzes, provas e conta."
+                        )
                         st.rerun()
             with ec2:
                 if st.button("🗑️ Remover", key=f"del_student_{s['id']}"):
@@ -249,16 +253,32 @@ def render_students_tab():
 
 def _render_orphan_results_cleanup(students: list):
     """Lista resultados de alunos que não existem mais e permite removê-los."""
-    roster_keys = {s["name"].strip().lower() for s in students}
+    roster_names = {s["name"].strip().lower() for s in students}
+    roster_emails = {
+        (s.get("email") or "").strip().lower()
+        for s in students
+        if (s.get("email") or "").strip()
+    }
+    for s in students:
+        linked = resolve_roster_student_email(s)
+        if linked:
+            roster_emails.add(linked)
+
+    def _is_orphan(name: str | None, email: str | None) -> bool:
+        em = (email or "").strip().lower()
+        if em and em in roster_emails:
+            return False
+        n = (name or "").strip().lower()
+        return bool(n) and n not in roster_names
 
     orphans: dict[str, dict] = {}
     for e in load_leaderboard():
         n = (e.get("name") or "").strip()
-        if n and n.lower() not in roster_keys:
+        if _is_orphan(n, e.get("student_email")):
             orphans.setdefault(n, {"quiz": 0, "provas": 0})["quiz"] += 1
     for sub in load_exam_submissions():
         n = (sub.get("student_name") or "").strip()
-        if n and n.lower() not in roster_keys:
+        if _is_orphan(n, sub.get("student_email")):
             orphans.setdefault(n, {"quiz": 0, "provas": 0})["provas"] += 1
 
     if not orphans:

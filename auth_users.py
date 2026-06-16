@@ -131,6 +131,51 @@ def find_user_by_id(user_id: str) -> dict | None:
     return None
 
 
+def find_user_for_roster_student(roster: dict) -> dict | None:
+    """Conta em users.json vinculada a um aluno da lista (students.json)."""
+    email = _normalize_email(roster.get("email"))
+    if email:
+        user = find_user_by_email(email)
+        if user and user.get("role") == "student":
+            return user
+
+    roster_id = roster.get("id")
+    if roster_id:
+        user = find_user_by_id(roster_id)
+        if user and user.get("role") == "student":
+            return user
+
+    return find_student_by_name(roster.get("name", ""))
+
+
+def rename_student_user_account(
+    *,
+    old_name: str,
+    new_name: str,
+    student_email: str | None = None,
+) -> int:
+    """Atualiza o nome do aluno em users.json (prioriza e-mail)."""
+    old_key = _normalize_name(old_name)
+    email_key = _normalize_email(student_email) if student_email else None
+    new_name = " ".join(new_name.strip().split())
+    updated = 0
+    users = load_users()
+    for user in users:
+        if user.get("role") != "student":
+            continue
+        match = bool(email_key and _normalize_email(user.get("email")) == email_key)
+        if not match and old_key:
+            match = _normalize_name(user.get("name", "")) == old_key
+        if not match:
+            continue
+        user["name"] = new_name
+        user["updated_at"] = datetime.now(timezone.utc).isoformat()
+        updated += 1
+    if updated:
+        save_users(users)
+    return updated
+
+
 def find_student_by_name(name: str) -> dict | None:
     key = _normalize_name(name)
     for user in load_users():
@@ -202,29 +247,77 @@ def get_pending_professors() -> list:
     return [u for u in get_pending_users() if u.get("role") == "professor"]
 
 
-def _sync_approved_student_to_roster(name: str) -> None:
-    from quiz_storage import add_student, find_student_by_name
+def _sync_approved_student_to_roster(name: str, email: str | None = None) -> None:
+    from quiz_storage import add_student, find_student_by_email, find_student_by_name
 
     clean = " ".join(name.strip().split())
-    if clean and not find_student_by_name(clean):
-        add_student(clean)
+    email_key = _normalize_email(email) if email else None
+    if not clean:
+        return
+    if email_key and find_student_by_email(email_key):
+        return
+    if find_student_by_name(clean):
+        return
+    add_student(clean, email=email_key)
 
 
 def sync_student_roster_from_users() -> int:
-    """Garante que alunos aprovados em users.json existam em students.json."""
-    from quiz_storage import add_student, find_student_by_name
+    """Garante que alunos aprovados em users.json existam e fiquem sincronizados."""
+    from quiz_storage import (
+        _normalize_name,
+        add_student,
+        rename_student_records,
+        load_students,
+        save_students,
+    )
 
-    added = 0
+    changed = 0
+    students = load_students()
     for u in load_users():
         if u.get("role") != "student" or not is_user_approved(u):
             continue
         name = " ".join((u.get("name") or "").strip().split())
-        if not name or find_student_by_name(name):
+        email = _normalize_email(u.get("email"))
+        if not name:
             continue
-        _, err = add_student(name)
-        if not err:
-            added += 1
-    return added
+
+        roster = None
+        if email:
+            for s in students:
+                if (s.get("email") or "").strip().lower() == email:
+                    roster = s
+                    break
+        if not roster:
+            name_key = _normalize_name(name)
+            roster = next(
+                (s for s in students if _normalize_name(s.get("name", "")) == name_key),
+                None,
+            )
+
+        if roster:
+            old_name = roster["name"]
+            roster_changed = False
+            if roster.get("name") != name:
+                roster["name"] = name
+                roster_changed = True
+            if email and roster.get("email") != email:
+                roster["email"] = email
+                roster_changed = True
+            if roster_changed:
+                save_students(students)
+                if _normalize_name(old_name) != _normalize_name(name):
+                    rename_student_records(
+                        old_name=old_name,
+                        new_name=name,
+                        student_email=email,
+                    )
+                changed += 1
+        else:
+            _, err = add_student(name, email=email)
+            if not err:
+                students = load_students()
+                changed += 1
+    return changed
 
 
 def _user_from_backup_row(row: dict) -> dict | None:
@@ -370,7 +463,17 @@ def list_approved_students() -> list[dict]:
             continue
         seen.add(key)
         roster = find_student_by_name(name)
-        result.append({"id": roster["id"] if roster else u["id"], "name": name})
+        if not roster and u.get("email"):
+            from quiz_storage import find_student_by_email
+
+            roster = find_student_by_email(u.get("email"))
+        result.append(
+            {
+                "id": roster["id"] if roster else u["id"],
+                "name": name,
+                "email": _normalize_email(u.get("email")) or None,
+            }
+        )
 
     for s in sorted(load_students(), key=lambda x: x["name"].lower()):
         key = _normalize_name(s["name"])
@@ -378,7 +481,13 @@ def list_approved_students() -> list[dict]:
             continue
         if is_approved_student_name(s["name"]):
             seen.add(key)
-            result.append({"id": s["id"], "name": s["name"]})
+            result.append(
+                {
+                    "id": s["id"],
+                    "name": s["name"],
+                    "email": (s.get("email") or "").strip().lower() or None,
+                }
+            )
 
     return result
 
@@ -574,12 +683,29 @@ def set_user_role(user_id: str, role: str) -> str | None:
     return "Usuário não encontrado."
 
 
-def _rename_student_roster(old_name: str, new_name: str) -> None:
-    from quiz_storage import find_student_by_name, update_student
+def _rename_student_roster(old_name: str, new_name: str, student_email: str | None = None) -> None:
+    from quiz_storage import (
+        find_student_by_email,
+        find_student_by_name,
+        rename_student_records,
+        update_student,
+    )
 
     roster = find_student_by_name(old_name)
+    if not roster and student_email:
+        roster = find_student_by_email(student_email)
     if roster:
-        update_student(roster["id"], new_name)
+        update_student(
+            roster["id"],
+            new_name,
+            email=student_email or roster.get("email"),
+        )
+        return
+    rename_student_records(
+        old_name=old_name,
+        new_name=new_name,
+        student_email=student_email,
+    )
 
 
 def _remove_student_roster(name: str) -> None:
@@ -631,7 +757,11 @@ def update_user_account(
             _sync_approved_student_to_roster(target.get("name", ""))
 
     if target.get("role") == "student" and target.get("name") != old_name:
-        _rename_student_roster(old_name, target.get("name", ""))
+        _rename_student_roster(
+            old_name,
+            target.get("name", ""),
+            student_email=target.get("email"),
+        )
 
     target["updated_at"] = datetime.now(timezone.utc).isoformat()
     save_users(users)

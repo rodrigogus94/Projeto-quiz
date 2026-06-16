@@ -242,15 +242,108 @@ def find_student_by_name(name: str) -> dict | None:
     return None
 
 
-def add_student(name: str) -> tuple[dict | None, str | None]:
+def find_student_by_id(student_id: str) -> dict | None:
+    for s in load_students():
+        if s.get("id") == student_id:
+            return s
+    return None
+
+
+def find_student_by_email(email: str | None) -> dict | None:
+    key = (email or "").strip().lower()
+    if not key:
+        return None
+    for s in load_students():
+        if (s.get("email") or "").strip().lower() == key:
+            return s
+    return None
+
+
+def resolve_roster_student_email(student: dict) -> str | None:
+    """E-mail canônico do aluno na lista (students.json ou users.json)."""
+    email = (student.get("email") or "").strip().lower()
+    if email:
+        return email
+    from auth_users import find_user_for_roster_student
+
+    user = find_user_for_roster_student(student)
+    if user and user.get("email"):
+        return user["email"].strip().lower()
+    return None
+
+
+def rename_student_records(
+    *,
+    old_name: str,
+    new_name: str,
+    student_email: str | None = None,
+) -> dict:
+    """Propaga o novo nome para quizzes, provas, lista e conta (prioriza e-mail)."""
+    old_key = _normalize_name(old_name)
+    new_name = " ".join(new_name.strip().split())
+    email_key = (student_email or "").strip().lower() or None
+    stats = {"quiz_updated": 0, "exam_updated": 0, "roster_updated": 0, "users_updated": 0}
+
+    def _matches(name: str | None, email: str | None) -> bool:
+        if email_key and (email or "").strip().lower() == email_key:
+            return True
+        return bool(old_key) and _normalize_name(name or "") == old_key
+
+    board = load_leaderboard()
+    for entry in board:
+        if _matches(entry.get("name"), entry.get("student_email")):
+            entry["name"] = new_name
+            if email_key:
+                entry["student_email"] = email_key
+            stats["quiz_updated"] += 1
+    if stats["quiz_updated"]:
+        save_leaderboard(board)
+
+    subs = load_exam_submissions()
+    for sub in subs:
+        if _matches(sub.get("student_name"), sub.get("student_email")):
+            sub["student_name"] = new_name
+            if email_key:
+                sub["student_email"] = email_key
+            stats["exam_updated"] += 1
+    if stats["exam_updated"]:
+        save_exam_submissions(subs)
+
+    students = load_students()
+    roster_changed = False
+    for student in students:
+        if _matches(student.get("name"), student.get("email")):
+            student["name"] = new_name
+            if email_key:
+                student["email"] = email_key
+            stats["roster_updated"] += 1
+            roster_changed = True
+    if roster_changed:
+        save_students(students)
+
+    from auth_users import rename_student_user_account
+
+    stats["users_updated"] = rename_student_user_account(
+        old_name=old_name,
+        new_name=new_name,
+        student_email=email_key,
+    )
+    return stats
+
+
+def add_student(name: str, email: str | None = None) -> tuple[dict | None, str | None]:
     name = " ".join(name.strip().split())
+    email_key = (email or "").strip().lower() or None
     if not name:
         return None, "Informe o nome do aluno."
     if find_student_by_name(name):
         return None, "Já existe um aluno com este nome."
+    if email_key and find_student_by_email(email_key):
+        return None, "Já existe um aluno com este e-mail."
     student = {
         "id": str(uuid.uuid4()),
         "name": name,
+        "email": email_key,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     students = load_students()
@@ -259,21 +352,37 @@ def add_student(name: str) -> tuple[dict | None, str | None]:
     return student, None
 
 
-def update_student(student_id: str, name: str) -> str | None:
+def update_student(student_id: str, name: str, email: str | None = None) -> str | None:
     name = " ".join(name.strip().split())
     if not name:
         return "Informe o nome do aluno."
     students = load_students()
     key = _normalize_name(name)
+    email_key = (email or "").strip().lower() if email is not None else None
     for other in students:
         if other["id"] != student_id and _normalize_name(other["name"]) == key:
             return "Já existe outro aluno com este nome."
+        if email_key and other["id"] != student_id and (other.get("email") or "").strip().lower() == email_key:
+            return "Já existe outro aluno com este e-mail."
     for s in students:
         if s["id"] == student_id:
+            old_name = s["name"]
             s["name"] = name
+            if email is not None:
+                s["email"] = email_key
+            elif not s.get("email"):
+                linked = resolve_roster_student_email(s)
+                if linked:
+                    s["email"] = linked
             s.pop("identifier", None)
             s["updated_at"] = datetime.now(timezone.utc).isoformat()
             save_students(students)
+            if _normalize_name(old_name) != _normalize_name(name):
+                rename_student_records(
+                    old_name=old_name,
+                    new_name=name,
+                    student_email=s.get("email"),
+                )
             return None
     return "Aluno não encontrado."
 
@@ -315,13 +424,17 @@ def delete_student(student_id: str) -> None:
     target = next((s for s in students if s["id"] == student_id), None)
     save_students([s for s in students if s["id"] != student_id])
     if target:
-        purge_student_results(target["name"])
+        purge_student_results(target["name"], resolve_roster_student_email(target))
 
 
-def student_quiz_stats(student_name: str) -> dict:
-    key = _normalize_name(student_name)
+def student_quiz_stats(student_name: str, student_email: str | None = None) -> dict:
+    name_key = _normalize_name(student_name)
+    email_key = (student_email or "").strip().lower()
     entries = [
-        e for e in load_leaderboard() if _normalize_name(e.get("name", "")) == key
+        e
+        for e in load_leaderboard()
+        if (email_key and (e.get("student_email") or "").strip().lower() == email_key)
+        or _normalize_name(e.get("name", "")) == name_key
     ]
     if not entries:
         return {"attempts": 0, "avg_pct": None, "last_score": None}

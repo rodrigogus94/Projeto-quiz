@@ -391,6 +391,7 @@ def render_student_quiz_tab():
         return
 
     col_cfg, col_main = st.columns([1, 2], gap="large")
+    user = st.session_state.get("current_user") or {}
     with col_cfg:
         with st.container(border=True):
             st.markdown('<div class="kahoot-config-title">Começar</div>', unsafe_allow_html=True)
@@ -412,7 +413,9 @@ def render_student_quiz_tab():
             st.divider()
 
             can_play, attempt_msg, needs_confirm = (
-                quiz_attempt_permission(selected_name, picked_id)
+                quiz_attempt_permission(
+                    selected_name, picked_id, user.get("email")
+                )
                 if selected_name and mat
                 else (True, "", False)
             )
@@ -747,6 +750,7 @@ def _render_quiz_results():
     can_retry, retry_msg, needs_confirm = quiz_attempt_permission(
         st.session_state.current_student_name,
         st.session_state.current_material_id or "",
+        (st.session_state.get("current_user") or {}).get("email"),
     )
     if can_retry and needs_confirm:
         st.info(retry_msg)
