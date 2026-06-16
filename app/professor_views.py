@@ -472,17 +472,22 @@ def render_exams_tab():
         summary = sub.get("summary") or summarize_answers(sub["answers"])
         c = summary["counts"]
         attempt_tag = f" · tent. {sub.get('attempt', 1)}" if sub.get("attempt", 1) > 1 else ""
+        status_tag = (
+            " · ✅ Devolvida"
+            if exam_correction_released(sub)
+            else " · ⏳ Pendente"
+        )
         if summary.get("grading_model") == "uc2_recovery":
             label = (
                 f"{sub['student_name']}{attempt_tag} — MC:{summary.get('mc_correct', 0)}/"
                 f"{int(summary['max_points'])} · +{summary.get('recovery_points', 0):.1f} rec — "
-                f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
+                f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts{status_tag}"
             )
         else:
             label = (
                 f"{sub['student_name']}{attempt_tag} — "
                 f"A:{c['A']} | PA:{c['PA']} | NA:{c['NA']} — "
-                f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts"
+                f"{summary['total_points']:.1f}/{summary['max_points']:.0f} pts{status_tag}"
             )
         with st.expander(label):
             if not corr_exam:
