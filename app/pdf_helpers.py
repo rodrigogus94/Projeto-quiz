@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from io import BytesIO
+
 import pdfplumber
 import streamlit as st
 
@@ -29,6 +31,27 @@ def _normalize_markdown_source(text: str) -> str:
     return "\n".join(lines)
 
 
+def read_text_from_bytes(content: bytes, filename: str) -> str:
+    name = (filename or "").lower()
+    if name.endswith(".pdf"):
+        with pdfplumber.open(BytesIO(content)) as pdf:
+            parts = []
+            for page in pdf.pages:
+                text = page.extract_text()
+                if text:
+                    parts.append(text)
+            return "\n".join(parts)
+    if name.endswith((".md", ".markdown", ".txt")):
+        text = content.decode("utf-8-sig")
+        if name.endswith((".md", ".markdown")):
+            text = _normalize_markdown_source(text)
+        return text
+    raise ValueError(
+        f"Formato não suportado ({name or 'sem extensão'}). "
+        f"Use: {', '.join(SUPPORTED_UPLOAD_EXTENSIONS)}."
+    )
+
+
 def read_text_from_upload(uploaded_file) -> str:
     name = (getattr(uploaded_file, "name", None) or "").lower()
     uploaded_file.seek(0)
@@ -44,6 +67,30 @@ def read_text_from_upload(uploaded_file) -> str:
         f"Formato não suportado ({name or 'sem extensão'}). "
         f"Use: {', '.join(SUPPORTED_UPLOAD_EXTENSIONS)}."
     )
+
+
+def parse_questions_from_bytes(
+    content: bytes, filename: str, show_warnings: bool = True
+) -> list:
+    full_text = read_text_from_bytes(content, filename)
+    warnings = []
+    questions = parse_questions_from_text(full_text, warnings=warnings)
+    if show_warnings:
+        for msg in warnings:
+            st.warning(msg)
+    return questions
+
+
+def parse_exam_from_bytes(
+    content: bytes, filename: str, show_warnings: bool = True
+) -> list:
+    full_text = read_text_from_bytes(content, filename)
+    warnings = []
+    questions = parse_exam_from_text(full_text, warnings=warnings)
+    if show_warnings:
+        for msg in warnings:
+            st.warning(msg)
+    return questions
 
 
 def parse_questions_from_upload(uploaded_file, show_warnings: bool = True) -> list:

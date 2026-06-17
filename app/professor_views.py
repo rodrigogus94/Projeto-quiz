@@ -22,9 +22,11 @@ from quiz_storage import (
     today_brasilia,
     clear_leaderboard_for_material,
     create_exam,
+    create_exams_bulk,
     exam_deadline_label,
     exam_is_past_deadline,
     create_material,
+    create_materials_bulk,
     delete_exam,
     delete_material,
     delete_student,
@@ -79,7 +81,9 @@ from app.constants import EMPTY_QUESTION, EXAM_FORMAT_HELP
 from app.navigation import get_professor_section
 from app.pdf_helpers import (
     UPLOAD_FILE_TYPES,
+    parse_exam_from_bytes,
     parse_exam_from_upload,
+    parse_questions_from_bytes,
     parse_questions_from_upload,
     validate_questions,
 )
@@ -342,17 +346,39 @@ def _upload_widget_key(widget_base: str) -> str:
 
 
 def _uploaded_files_list(uploaded) -> list:
-    if not uploaded:
+    if uploaded is None:
         return []
-    if isinstance(uploaded, list):
-        return [f for f in uploaded if f is not None]
-    return [uploaded]
+    items = uploaded if isinstance(uploaded, (list, tuple)) else [uploaded]
+    seen: set[tuple] = set()
+    files = []
+    for item in items:
+        if item is None:
+            continue
+        key = (
+            getattr(item, "file_id", None),
+            getattr(item, "name", None),
+            getattr(item, "size", None),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        files.append(item)
+    return files
 
 
-def _title_from_upload(filename: str, base_title: str = "") -> str:
+def _title_from_upload(
+    filename: str,
+    base_title: str = "",
+    *,
+    multiple: bool = False,
+) -> str:
     """Título da prova/material: usa o campo do professor ou o nome do arquivo."""
     stem = Path(filename).stem.replace("_", " ").strip()
     base = " ".join((base_title or "").strip().split())
+    if multiple:
+        if base:
+            return f"{base} — {stem}" if stem else base
+        return stem or "Importado"
     if not base:
         return stem or "Importado"
     if not stem or stem.lower() == base.lower():
@@ -399,11 +425,19 @@ def render_exams_tab():
         accept_multiple_files=True,
     )
     upload_files = _uploaded_files_list(uploaded)
-    if len(upload_files) > 1:
-        st.caption(
-            f"**{len(upload_files)}** arquivo(s) selecionado(s). "
-            "Cada um vira uma prova (título = campo acima + nome do arquivo, ou só o nome do arquivo)."
-        )
+    if upload_files:
+        with st.expander(
+            f"📎 Arquivos selecionados ({len(upload_files)})",
+            expanded=len(upload_files) > 1,
+        ):
+            for f in upload_files:
+                size_kb = (getattr(f, "size", 0) or 0) / 1024
+                st.write(f"• **{f.name}** ({size_kb:.1f} KB)")
+        if len(upload_files) > 1:
+            st.caption(
+                "Cada arquivo vira uma prova separada. "
+                "O título usa o nome do arquivo (ou o campo acima + nome do arquivo)."
+            )
     use_deadline = st.checkbox("Definir prazo de entrega", key="exam_use_deadline")
     deadline_at = None
     dl_date = None
@@ -443,18 +477,33 @@ def render_exams_tab():
 
         created: list[str] = []
         errors: list[str] = []
+        bulk_entries: list[tuple[str, list]] = []
+        multi = len(upload_files) > 1
+
         for uploaded_file in upload_files:
-            title = _title_from_upload(uploaded_file.name, new_title)
-            questions = parse_exam_from_upload(
-                uploaded_file,
-                show_warnings=len(upload_files) == 1,
+            title = _title_from_upload(
+                uploaded_file.name,
+                new_title,
+                multiple=multi,
             )
+            try:
+                questions = parse_exam_from_bytes(
+                    uploaded_file.getvalue(),
+                    uploaded_file.name,
+                    show_warnings=not multi,
+                )
+            except ValueError as exc:
+                errors.append(f"{uploaded_file.name}: {exc}")
+                continue
             if not questions:
                 errors.append(f"{uploaded_file.name}: nenhuma questão identificada.")
                 continue
-            create_exam(title, questions, deadline_at=deadline_at)
-            summary = exam_summary(questions)
-            created.append(f"**{title}** ({summary['total']} questões)")
+            bulk_entries.append((title, questions))
+
+        if bulk_entries:
+            for exam in create_exams_bulk(bulk_entries, deadline_at=deadline_at):
+                summary = exam_summary(exam["questions"])
+                created.append(f"**{exam['title']}** ({summary['total']} questões)")
 
         if created:
             if len(created) == 1:
@@ -1268,11 +1317,14 @@ def render_professor_panel():
             accept_multiple_files=True,
         )
         material_files = _uploaded_files_list(uploaded)
-        if len(material_files) > 1:
-            st.caption(
-                f"**{len(material_files)}** arquivo(s) selecionado(s). "
-                "Cada um vira um material (título = campo acima + nome do arquivo, ou só o nome do arquivo)."
-            )
+        if material_files:
+            with st.expander(
+                f"📎 Arquivos selecionados ({len(material_files)})",
+                expanded=len(material_files) > 1,
+            ):
+                for f in material_files:
+                    size_kb = (getattr(f, "size", 0) or 0) / 1024
+                    st.write(f"• **{f.name}** ({size_kb:.1f} KB)")
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -1290,18 +1342,33 @@ def render_professor_panel():
                 else:
                     created = []
                     errors = []
+                    bulk_entries: list[tuple[str, list]] = []
+                    multi = len(material_files) > 1
                     for mat_file in material_files:
-                        title = _title_from_upload(mat_file.name, new_title)
-                        questions = parse_questions_from_upload(
-                            mat_file,
-                            show_warnings=len(material_files) == 1,
+                        title = _title_from_upload(
+                            mat_file.name,
+                            new_title,
+                            multiple=multi,
                         )
+                        try:
+                            questions = parse_questions_from_bytes(
+                                mat_file.getvalue(),
+                                mat_file.name,
+                                show_warnings=not multi,
+                            )
+                        except ValueError as exc:
+                            errors.append(f"{mat_file.name}: {exc}")
+                            continue
                         if questions:
-                            create_material(title, questions)
-                            created.append(f"\"{title}\" ({len(questions)} perguntas)")
+                            bulk_entries.append((title, questions))
                         else:
                             errors.append(
                                 f"{mat_file.name}: não foi possível extrair perguntas."
+                            )
+                    if bulk_entries:
+                        for material in create_materials_bulk(bulk_entries):
+                            created.append(
+                                f"\"{material['title']}\" ({len(material['questions'])} perguntas)"
                             )
                     if created:
                         if len(created) == 1:

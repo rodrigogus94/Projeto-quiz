@@ -148,18 +148,35 @@ def toggle_material_active(material_id: str) -> bool:
 
 
 def create_material(title: str, questions: list) -> dict:
-    material = {
-        "id": str(uuid.uuid4()),
-        "title": title.strip() or "Material sem título",
-        "questions": questions,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    created = create_materials_bulk([(title, questions)])
+    return created[0]
+
+
+def create_materials_bulk(entries: list[tuple[str, list]]) -> list[dict]:
+    """Cria vários materiais em uma única gravação."""
+    if not entries:
+        return []
+
     store = load_materials_store()
-    store["materials"].append(material)
-    if len(store["materials"]) == 1:
-        store.setdefault("active_material_ids", []).append(material["id"])
+    had_materials = bool(store.get("materials"))
+    created: list[dict] = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for title, questions in entries:
+        material = {
+            "id": str(uuid.uuid4()),
+            "title": title.strip() or "Material sem título",
+            "questions": questions,
+            "created_at": now,
+        }
+        store["materials"].append(material)
+        created.append(material)
+
+    if created and not had_materials:
+        store.setdefault("active_material_ids", []).append(created[0]["id"])
+
     save_materials_store(store)
-    return material
+    return created
 
 
 def update_material(material_id: str, title: str, questions: list) -> bool:
@@ -745,21 +762,42 @@ def merge_exam_submission(existing: dict, incoming: dict) -> dict:
 
 
 def create_exam(title: str, questions: list, deadline_at: str | None = None) -> dict:
+    created = create_exams_bulk([(title, questions)], deadline_at=deadline_at)
+    return created[0]
+
+
+def create_exams_bulk(
+    entries: list[tuple[str, list]],
+    *,
+    deadline_at: str | None = None,
+) -> list[dict]:
+    """Cria várias provas em uma única gravação (evita perder envios no lote)."""
     from pdf_parser import normalize_exam_questions
 
-    exam = {
-        "id": str(uuid.uuid4()),
-        "title": title.strip() or "Prova sem título",
-        "questions": normalize_exam_questions(questions),
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "deadline_at": deadline_at,
-    }
+    if not entries:
+        return []
+
     store = load_exams_store()
-    store["exams"].append(exam)
-    if len(store["exams"]) == 1:
-        store.setdefault("active_exam_ids", []).append(exam["id"])
+    had_exams = bool(store.get("exams"))
+    created: list[dict] = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    for title, questions in entries:
+        exam = {
+            "id": str(uuid.uuid4()),
+            "title": title.strip() or "Prova sem título",
+            "questions": normalize_exam_questions(questions),
+            "created_at": now,
+            "deadline_at": deadline_at,
+        }
+        store["exams"].append(exam)
+        created.append(exam)
+
+    if created and not had_exams:
+        store.setdefault("active_exam_ids", []).append(created[0]["id"])
+
     save_exams_store(store)
-    return exam
+    return created
 
 
 def update_exam(exam_id: str, title: str, questions: list) -> bool:
