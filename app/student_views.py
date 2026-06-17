@@ -1474,6 +1474,7 @@ def _render_exam_flow():
         f"💾 Salvamento automático ativo — **{answered_count}/{total_q}** questões com resposta. "
         "Se a internet cair, reabra a prova e clique em **Continuar prova**."
     )
+    if needs_justify_exam:
         st.caption(
             "Marque a alternativa e **justifique** cada resposta. A nota principal vem da "
             "múltipla escolha; se errar, uma boa justificativa pode recuperar até metade do ponto."
@@ -1507,6 +1508,7 @@ def _render_exam_flow():
                     format_func=lambda x: f"{x}) {opts[x]}",
                     key=f"exam_q_{i}_mc",
                     label_visibility="visible",
+                    on_change=_exam_autosave_touch,
                 )
                 if show_justify:
                     st.text_area(
@@ -1514,6 +1516,7 @@ def _render_exam_flow():
                         key=f"exam_q_{i}_justify",
                         height=100,
                         placeholder="Explique o conceito por trás da alternativa escolhida…",
+                        on_change=_exam_autosave_touch,
                     )
             else:
                 st.text_area(
@@ -1521,6 +1524,7 @@ def _render_exam_flow():
                     key=f"exam_q_{i}",
                     height=120,
                     placeholder="Escreva sua justificativa aqui…",
+                    on_change=_exam_autosave_touch,
                 )
 
     autosave_exam_draft(
@@ -1529,25 +1533,11 @@ def _render_exam_flow():
         student_email=student_email,
     )
 
-    save_col, submit_col = st.columns(2)
-    with save_col:
-        if st.button("💾 Salvar progresso agora", use_container_width=True):
-            draft = autosave_exam_draft(
-                exam=exam,
-                student_name=student_name,
-                student_email=student_email,
-            )
-            if draft:
-                saved = count_answered_questions(draft.get("answers") or {}, total_q)
-                st.toast(f"Progresso salvo ({saved}/{total_q} questões).")
-            else:
-                st.toast("Nenhuma resposta para salvar ainda.")
-    with submit_col:
-        submit_clicked = st.button(
-            "📤 Enviar prova",
-            type="primary",
-            use_container_width=True,
-        )
+    submit_clicked = st.button(
+        "📤 Enviar prova",
+        type="primary",
+        use_container_width=True,
+    )
 
     if submit_clicked:
         answers_input = build_answers_input_from_session(questions)
