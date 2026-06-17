@@ -386,6 +386,26 @@ def _title_from_upload(
     return f"{base} — {stem}"
 
 
+def _bulk_import_flash(
+    created: list[str],
+    errors: list[str],
+    *,
+    singular: str,
+    plural: str,
+) -> str:
+    parts: list[str] = []
+    if created:
+        if len(created) == 1:
+            parts.append(f"{singular.capitalize()} criado: {created[0]}.")
+        else:
+            parts.append(f"{len(created)} {plural} importados: " + ", ".join(created) + ".")
+    if errors:
+        parts.append(
+            f"⚠️ {len(errors)} arquivo(s) não importado(s): " + " | ".join(errors)
+        )
+    return " ".join(parts)
+
+
 def render_exams_tab():
     exam_flash = st.session_state.pop("exam_import_flash", None)
     release_flash = st.session_state.pop("exam_release_flash", None)
@@ -506,12 +526,12 @@ def render_exams_tab():
                 created.append(f"**{exam['title']}** ({summary['total']} questões)")
 
         if created:
-            if len(created) == 1:
-                st.session_state.exam_import_flash = f"Prova criada: {created[0]}."
-            else:
-                st.session_state.exam_import_flash = (
-                    f"{len(created)} provas importadas: " + ", ".join(created) + "."
-                )
+            st.session_state.exam_import_flash = _bulk_import_flash(
+                created,
+                errors,
+                singular="prova",
+                plural="provas",
+            )
             _bump_upload_widget("exam_pdf")
             _bump_upload_widget("exam_title")
             st.rerun()
@@ -1371,16 +1391,12 @@ def render_professor_panel():
                                 f"\"{material['title']}\" ({len(material['questions'])} perguntas)"
                             )
                     if created:
-                        if len(created) == 1:
-                            st.session_state.quiz_import_flash = (
-                                f"Quiz {created[0]} criado."
-                            )
-                        else:
-                            st.session_state.quiz_import_flash = (
-                                f"{len(created)} materiais criados: "
-                                + ", ".join(created)
-                                + "."
-                            )
+                        st.session_state.quiz_import_flash = _bulk_import_flash(
+                            created,
+                            errors,
+                            singular="material",
+                            plural="materiais",
+                        )
                         _bump_upload_widget("prof_pdf")
                         st.rerun()
                     if errors:

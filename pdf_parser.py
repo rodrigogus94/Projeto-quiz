@@ -571,36 +571,47 @@ def parse_exam_from_text(full_text: str, warnings: list | None = None) -> list:
 def parse_questions_from_text(full_text: str, warnings: list | None = None) -> list:
     """Parser de quiz — múltipla escolha (formato PDF ou Markdown)."""
     matches = list(PERGUNTA_HEADER.finditer(full_text))
-    if not matches:
-        kahoot = _parse_kahoot_questions(full_text, warnings)
-        if kahoot:
-            return kahoot
-        return _parse_markdown_quiz_questions(full_text, warnings)
+    if matches:
+        questions = []
+        for i, match in enumerate(matches):
+            num = match.group(1)
+            block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
+            block = full_text[match.start() : block_end]
+            header_end = match.end() - match.start()
 
-    questions = []
+            parsed = _parse_choice_block(block, header_end)
+            if parsed:
+                questions.append(
+                    {
+                        "question": parsed["question"],
+                        "options": parsed["options"],
+                        "correct": parsed["correct"],
+                    }
+                )
+            else:
+                _warn(
+                    warnings,
+                    f"Pergunta {num} ignorada: enunciado, alternativas ou resposta correta incompletos.",
+                )
+        if questions:
+            return questions
 
-    for i, match in enumerate(matches):
-        num = match.group(1)
-        block_end = matches[i + 1].start() if i + 1 < len(matches) else len(full_text)
-        block = full_text[match.start() : block_end]
-        header_end = match.end() - match.start()
+    kahoot = _parse_kahoot_questions(full_text, warnings)
+    if kahoot:
+        return kahoot
 
-        parsed = _parse_choice_block(block, header_end)
-        if parsed:
-            questions.append(
-                {
-                    "question": parsed["question"],
-                    "options": parsed["options"],
-                    "correct": parsed["correct"],
-                }
-            )
-        else:
-            _warn(
-                warnings,
-                f"Pergunta {num} ignorada: enunciado, alternativas ou resposta correta incompletos.",
-            )
+    kahoot_exam = _parse_kahoot_exam_questions(full_text, warnings)
+    if kahoot_exam:
+        return [
+            {
+                "question": q["question"],
+                "options": q["options"],
+                "correct": q["correct"],
+            }
+            for q in kahoot_exam
+        ]
 
-    return questions
+    return _parse_markdown_quiz_questions(full_text, warnings)
 
 
 def normalize_exam_question(q: dict) -> dict:

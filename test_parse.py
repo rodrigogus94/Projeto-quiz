@@ -164,6 +164,35 @@ class TestParseUC2Exam(unittest.TestCase):
         self.assertEqual(questions[0]["correct"], "A")
         self.assertIn("justificativa", questions[0]["answer_key"].lower())
 
+    def test_kahoot_exam_format_imports_as_quiz_material(self):
+        text = """
+## Pergunta 1
+* **Pergunta:** Questão de teste do sistema?
+* **Alternativas:**
+  * [X] A) Opção A correta
+  * [ ] B) Opção B
+  * [ ] C) Opção C
+  * [ ] D) Opção D
+* **Justificativa:** Texto esperado na correção da justificativa.
+
+## Pergunta 2
+* **Pergunta:** Segunda questão?
+* **Alternativas:**
+  * [ ] A) Opção A
+  * [X] B) Opção B correta
+  * [ ] C) Opção C
+  * [ ] D) Opção D
+
+## GABARITO OFICIAL
+| Pergunta | Resposta |
+| 1 | A |
+| 2 | B |
+"""
+        questions = parse_questions_from_text(text)
+        self.assertEqual(len(questions), 2)
+        self.assertEqual(questions[0]["correct"], "A")
+        self.assertEqual(questions[1]["correct"], "B")
+
     def test_pergunta_lowercase_options_with_justify(self):
         text = """
 Pergunta 1: O que é um algoritmo?
