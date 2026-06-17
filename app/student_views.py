@@ -1199,7 +1199,7 @@ def _render_quiz_flow():
                 st.error(
                     f"❌ Resposta incorreta. A alternativa correta era **{feedback['correct']}**."
                 )
-            action_back, action_mid, action_fwd = st.columns([1, 2, 1])
+            action_back, action_fwd = st.columns(2)
             with action_back:
                 if st.button(
                     "⬅️ Voltar",
@@ -1208,14 +1208,6 @@ def _render_quiz_flow():
                     key=f"quiz_fb_back_{q_index}",
                 ):
                     _quiz_go_to_question(q_index - 1, slots)
-                    st.rerun()
-            with action_mid:
-                if st.button("✏️ Alterar resposta", key=f"quiz_change_{q_index}", use_container_width=True):
-                    slots[q_index] = None
-                    st.session_state.quiz_answer_slots = slots
-                    st.session_state.answer_feedback = None
-                    if quiz_radio_key(q_index) in st.session_state:
-                        del st.session_state[quiz_radio_key(q_index)]
                     st.rerun()
             with action_fwd:
                 if q_index + 1 < total_q:
