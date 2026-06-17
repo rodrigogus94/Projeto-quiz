@@ -14,6 +14,7 @@ from quiz_storage import (
     DATA_DIR,
     EXAM_DRAFTS_PATH,
     EXAM_SUBMISSIONS_PATH,
+    QUIZ_DRAFTS_PATH,
     EXAMS_PATH,
     LEADERBOARD_PATH,
     MATERIALS_PATH,
@@ -55,6 +56,7 @@ _BACKUP_PATHS: dict[str, Path] = {
     "exams": EXAMS_PATH,
     "exam_submissions": EXAM_SUBMISSIONS_PATH,
     "exam_drafts": EXAM_DRAFTS_PATH,
+    "quiz_drafts": QUIZ_DRAFTS_PATH,
     "users": USERS_PATH,
 }
 

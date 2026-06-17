@@ -65,6 +65,7 @@ def init_session_state():
         "quiz_active": False,
         "current_q_index": 0,
         "student_answers": [],
+        "quiz_answer_slots": [],
         "current_student_name": "",
         "quiz_finished": False,
         "show_comparison": False,
@@ -175,13 +176,15 @@ def get_playable_active_materials() -> list:
     return [m for m in get_active_materials() if m.get("questions")]
 
 
-def reset_quiz():
+def reset_quiz(*, question_count: int = 0):
     st.session_state.quiz_active = True
     st.session_state.current_q_index = 0
     st.session_state.student_answers = []
+    st.session_state.quiz_answer_slots = [None] * question_count if question_count else []
     st.session_state.quiz_finished = False
     st.session_state.show_comparison = False
     st.session_state.answer_feedback = None
+    st.session_state.pop("quiz_draft_notice", None)
 
 
 def finish_quiz():

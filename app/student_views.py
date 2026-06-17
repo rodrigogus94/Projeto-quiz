@@ -114,6 +114,113 @@ def _render_student_identity(names: list[str], picker_key: str) -> str:
     )
 
 
+def _exam_autosave_touch() -> None:
+    """Callback dos campos da prova — dispara rerun e grava rascunho no fim do fluxo."""
+    st.session_state.exam_draft_autosaved = True
+
+
+def _render_quiz_navigation_panel(q_index: int, total_q: int, slots: list) -> None:
+    answered_count = count_answered_quiz_slots(slots)
+    pending = pending_quiz_indices(slots)
+
+    with st.container(border=True):
+        st.markdown('<div class="kahoot-config-title">Navegação</div>', unsafe_allow_html=True)
+        st.caption(f"💾 Salvamento automático · **{answered_count}/{total_q}** respondidas")
+
+        back_col, fwd_col = st.columns(2)
+        with back_col:
+            if st.button("⬅️ Voltar", disabled=q_index <= 0, use_container_width=True, key="quiz_nav_back"):
+                st.session_state.current_q_index = q_index - 1
+                st.session_state.answer_feedback = _quiz_feedback_for_index(
+                    q_index - 1, slots
+                )
+                st.rerun()
+        with fwd_col:
+            if st.button("➡️ Avançar", disabled=q_index >= total_q - 1, use_container_width=True, key="quiz_nav_fwd"):
+                st.session_state.current_q_index = q_index + 1
+                st.session_state.answer_feedback = _quiz_feedback_for_index(
+                    q_index + 1, slots
+                )
+                st.rerun()
+
+        st.markdown("**Mapa do quiz**")
+        map_cols = st.columns(min(total_q, 5))
+        for i in range(total_q):
+            slot = slots[i]
+            if slot and slot.get("answered"):
+                label = f"✅ {i + 1}"
+            elif i == q_index:
+                label = f"📍 {i + 1}"
+            else:
+                label = f"○ {i + 1}"
+            with map_cols[i % len(map_cols)]:
+                if st.button(label, key=f"quiz_map_{i}", use_container_width=True):
+                    st.session_state.current_q_index = i
+                    st.session_state.answer_feedback = _quiz_feedback_for_index(i, slots)
+                    st.rerun()
+
+        if pending:
+            st.warning(
+                f"**Faltam {len(pending)} pergunta(s):** "
+                + ", ".join(str(i + 1) for i in pending)
+            )
+            for i in pending:
+                if st.button(
+                    f"Ir para questão {i + 1}",
+                    key=f"quiz_pending_{i}",
+                    use_container_width=True,
+                ):
+                    st.session_state.current_q_index = i
+                    st.session_state.answer_feedback = None
+                    st.rerun()
+
+
+def _quiz_feedback_for_index(index: int, slots: list) -> dict | None:
+    if index < 0 or index >= len(slots):
+        return None
+    slot = slots[index]
+    if not slot or not slot.get("answered"):
+        return None
+    questions = st.session_state.get("questions") or []
+    if index >= len(questions):
+        return None
+    return {
+        "is_correct": bool(slot.get("is_correct")),
+        "correct": questions[index]["correct"],
+    }
+
+
+def _finish_quiz_from_slots() -> bool:
+    """Finaliza o quiz a partir dos slots confirmados e apaga o rascunho."""
+    total_q = len(st.session_state.questions)
+    slots = ensure_quiz_slots(total_q)
+    try:
+        st.session_state.student_answers = slots_to_student_answers(slots)
+    except ValueError:
+        pending = pending_quiz_indices(slots)
+        st.warning(
+            "Responda todas as perguntas antes de finalizar. "
+            f"Pendentes: {', '.join(str(i + 1) for i in pending)}."
+        )
+        return False
+
+    user = st.session_state.get("current_user") or {}
+    attempt = quiz_attempt_number(
+        st.session_state.current_student_name,
+        st.session_state.current_material_id,
+        user.get("email"),
+    )
+    finish_quiz()
+    clear_quiz_draft_for_attempt(
+        student_name=st.session_state.current_student_name,
+        student_email=user.get("email"),
+        material_id=st.session_state.current_material_id,
+        attempt=attempt,
+    )
+    st.session_state.pop("quiz_draft_notice", None)
+    return True
+
+
 def approved_students() -> list:
     return auth_users.list_approved_students()
 
@@ -746,9 +853,33 @@ def render_student_quiz_tab():
                     key=f"retry_confirm_{picked_id}",
                 )
 
+            quiz_btn_label = "🆕 Iniciar quiz"
+            if selected_name and mat:
+                attempt_no = quiz_attempt_number(
+                    selected_name, picked_id, user.get("email")
+                )
+                saved_quiz_draft = load_quiz_draft_for_attempt(
+                    student_name=selected_name,
+                    student_email=user.get("email"),
+                    material_id=picked_id,
+                    attempt=attempt_no,
+                )
+                if saved_quiz_draft:
+                    answered = count_answered_quiz_slots(
+                        normalize_quiz_slots(
+                            saved_quiz_draft.get("slots"),
+                            len(mat["questions"]),
+                        )
+                    )
+                    quiz_btn_label = "▶️ Continuar quiz"
+                    st.success(
+                        f"💾 Rascunho encontrado — **{answered}** pergunta(s) salva(s). "
+                        f"Última atualização: {_format_when(saved_quiz_draft.get('updated_at'))} (UTC)."
+                    )
+
             if (
                 st.button(
-                    "🆕 Iniciar quiz",
+                    quiz_btn_label,
                     use_container_width=True,
                     type="primary",
                     disabled=bool(selected_name) and (not can_play or not confirm_ok),
@@ -761,7 +892,14 @@ def render_student_quiz_tab():
                 load_student_material(picked_id)
                 st.session_state.current_student_name = selected_name
                 st.session_state.preferred_student_name = selected_name
-                reset_quiz()
+                restored = start_quiz_from_draft_or_fresh(
+                    material_id=picked_id,
+                    student_name=selected_name,
+                    student_email=user.get("email"),
+                    question_count=len(mat["questions"]),
+                )
+                if restored:
+                    st.session_state.quiz_draft_notice = True
                 st.rerun()
             elif not selected_name:
                 st.caption("Selecione seu nome para habilitar o início.")
@@ -1018,18 +1156,41 @@ def render_student_exam_tab():
 
 
 def _render_quiz_flow():
+    user = st.session_state.get("current_user") or {}
     q_index = st.session_state.current_q_index
     total_q = len(st.session_state.questions)
-    if q_index < total_q:
-        q_data = st.session_state.questions[q_index]
+    slots = ensure_quiz_slots(total_q)
+
+    if st.session_state.pop("quiz_draft_notice", False):
+        st.success("💾 Quiz recuperado — continue de onde parou.")
+
+    if q_index >= total_q:
+        if not st.session_state.get("quiz_finished"):
+            if _finish_quiz_from_slots():
+                st.rerun()
+        return
+
+    q_data = st.session_state.questions[q_index]
+    col_main, col_nav = st.columns([2, 1], gap="large")
+
+    with col_nav:
+        _render_quiz_navigation_panel(q_index, total_q, slots)
+
+    with col_main:
         render_flow_header(
             label="Quiz em andamento",
             current=q_index + 1,
             total=total_q,
             student_name=st.session_state.current_student_name,
         )
+        st.caption("Use **Voltar** e **Avançar** para revisar perguntas. O progresso é salvo automaticamente.")
 
         feedback = st.session_state.answer_feedback
+        if feedback is None:
+            feedback = _quiz_feedback_for_index(q_index, slots)
+            if feedback is not None:
+                st.session_state.answer_feedback = feedback
+
         with st.container(border=True):
             st.markdown(
                 f'<div class="kahoot-question-card"><h4>{q_data["question"]}</h4></div>',
@@ -1042,34 +1203,58 @@ def _render_quiz_flow():
                     st.error(
                         f"❌ Resposta incorreta. A alternativa correta era **{feedback['correct']}**."
                     )
-                label = "Ver resultado" if q_index + 1 >= total_q else "Próxima pergunta"
-                if st.button(f"➡️ {label}", key="next_question", type="primary"):
-                    st.session_state.answer_feedback = None
+                action_col1, action_col2 = st.columns(2)
+                with action_col1:
+                    if st.button("✏️ Alterar resposta", key=f"quiz_change_{q_index}"):
+                        slots[q_index] = None
+                        st.session_state.quiz_answer_slots = slots
+                        st.session_state.answer_feedback = None
+                        if quiz_radio_key(q_index) in st.session_state:
+                            del st.session_state[quiz_radio_key(q_index)]
+                        st.rerun()
+                with action_col2:
                     if q_index + 1 < total_q:
-                        st.session_state.current_q_index += 1
-                        st.rerun()
+                        if st.button("➡️ Próxima pergunta", key="next_question", type="primary"):
+                            st.session_state.answer_feedback = None
+                            st.session_state.current_q_index = q_index + 1
+                            st.rerun()
                     else:
-                        finish_quiz()
-                        st.rerun()
+                        pending = pending_quiz_indices(slots)
+                        if pending:
+                            st.warning(
+                                "Ainda faltam perguntas. Use o painel ao lado para ir às pendentes."
+                            )
+                        elif st.button("🏁 Ver resultado", key="finish_quiz", type="primary"):
+                            if _finish_quiz_from_slots():
+                                st.rerun()
             else:
                 option_map = {chr(65 + i): opt for i, opt in enumerate(q_data["options"])}
                 selected_letter = st.radio(
                     "Escolha uma alternativa:",
                     options=list(option_map.keys()),
                     format_func=lambda x: f"{x}: {option_map[x]}",
-                    key=f"q_{q_index}",
+                    key=quiz_radio_key(q_index),
                 )
-                if st.button("✅ Responder", key="submit_answer", type="primary"):
+                if st.button("✅ Confirmar resposta", key="submit_answer", type="primary"):
                     is_correct = selected_letter == q_data["correct"]
-                    st.session_state.student_answers.append(is_correct)
+                    slots[q_index] = {
+                        "letter": selected_letter,
+                        "answered": True,
+                        "is_correct": is_correct,
+                    }
+                    st.session_state.quiz_answer_slots = slots
                     st.session_state.answer_feedback = {
                         "is_correct": is_correct,
                         "correct": q_data["correct"],
                     }
                     st.rerun()
-    elif not st.session_state.get("quiz_finished"):
-        finish_quiz()
-        st.rerun()
+
+    autosave_quiz_draft(
+        material_id=st.session_state.current_material_id,
+        student_name=st.session_state.current_student_name,
+        student_email=user.get("email"),
+        question_count=total_q,
+    )
 
 
 def _render_quiz_results():
@@ -1289,7 +1474,6 @@ def _render_exam_flow():
         f"💾 Salvamento automático ativo — **{answered_count}/{total_q}** questões com resposta. "
         "Se a internet cair, reabra a prova e clique em **Continuar prova**."
     )
-    if needs_justify_exam:
         st.caption(
             "Marque a alternativa e **justifique** cada resposta. A nota principal vem da "
             "múltipla escolha; se errar, uma boa justificativa pode recuperar até metade do ponto."

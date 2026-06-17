@@ -18,6 +18,7 @@ STUDENTS_PATH = DATA_DIR / "students.json"
 EXAMS_PATH = DATA_DIR / "exams.json"
 EXAM_SUBMISSIONS_PATH = DATA_DIR / "exam_submissions.json"
 EXAM_DRAFTS_PATH = DATA_DIR / "exam_drafts.json"
+QUIZ_DRAFTS_PATH = DATA_DIR / "quiz_drafts.json"
 
 DEFAULT_USERNAME = "professor"
 DEFAULT_PASSWORD = "professor123"
@@ -199,6 +200,7 @@ def delete_material(material_id: str) -> None:
     if material_id in active_ids:
         active_ids.remove(material_id)
     save_materials_store(store)
+    delete_quiz_drafts_for_material(material_id)
 
 
 def load_leaderboard() -> list:
@@ -338,6 +340,17 @@ def rename_student_records(
     if draft_changed:
         save_exam_drafts(drafts)
 
+    quiz_drafts = load_quiz_drafts()
+    quiz_draft_changed = False
+    for draft in quiz_drafts:
+        if _matches(draft.get("student_name"), draft.get("student_email")):
+            draft["student_name"] = new_name
+            if email_key:
+                draft["student_email"] = email_key
+            quiz_draft_changed = True
+    if quiz_draft_changed:
+        save_quiz_drafts(quiz_drafts)
+
     students = load_students()
     roster_changed = False
     for student in students:
@@ -453,10 +466,19 @@ def purge_student_results(student_name: str, student_email: str | None = None) -
     if draft_removed:
         save_exam_drafts(kept_drafts)
 
+    quiz_drafts = load_quiz_drafts()
+    kept_quiz_drafts = [
+        d for d in quiz_drafts if not _is_target(d.get("student_name"), d.get("student_email"))
+    ]
+    quiz_draft_removed = len(quiz_drafts) - len(kept_quiz_drafts)
+    if quiz_draft_removed:
+        save_quiz_drafts(kept_quiz_drafts)
+
     return {
         "quiz_removed": quiz_removed,
         "exam_removed": exam_removed,
         "draft_removed": draft_removed,
+        "quiz_draft_removed": quiz_draft_removed,
     }
 
 
@@ -1086,6 +1108,114 @@ def delete_exam_drafts_for_exam(exam_id: str) -> int:
     removed = len(drafts) - len(kept)
     if removed:
         save_exam_drafts(kept)
+    return removed
+
+
+def load_quiz_drafts() -> list:
+    _ensure_data_dir()
+    data = _load_json(QUIZ_DRAFTS_PATH, [])
+    return data if isinstance(data, list) else []
+
+
+def save_quiz_drafts(drafts: list) -> None:
+    _save_json(QUIZ_DRAFTS_PATH, drafts)
+
+
+def find_quiz_draft(
+    student_name: str,
+    student_email: str | None,
+    material_id: str,
+    attempt: int,
+) -> dict | None:
+    for draft in load_quiz_drafts():
+        if draft.get("material_id") != material_id:
+            continue
+        if int(draft.get("attempt") or 1) != int(attempt):
+            continue
+        if _draft_identity_matches(draft, student_name, student_email):
+            return draft
+    return None
+
+
+def upsert_quiz_draft(
+    *,
+    student_name: str,
+    student_email: str | None,
+    material_id: str,
+    attempt: int,
+    slots: list,
+    current_q_index: int,
+    question_count: int,
+) -> dict:
+    now = datetime.now(timezone.utc).isoformat()
+    email_key = (student_email or "").strip().lower() or None
+    drafts = load_quiz_drafts()
+    existing = None
+    for draft in drafts:
+        if (
+            draft.get("material_id") == material_id
+            and int(draft.get("attempt") or 1) == int(attempt)
+            and _draft_identity_matches(draft, student_name, student_email)
+        ):
+            existing = draft
+            break
+
+    if existing:
+        existing["slots"] = slots
+        existing["current_q_index"] = int(current_q_index)
+        existing["question_count"] = question_count
+        existing["updated_at"] = now
+        save_quiz_drafts(drafts)
+        return existing
+
+    created = {
+        "id": str(uuid.uuid4()),
+        "material_id": material_id,
+        "student_name": student_name.strip(),
+        "student_email": email_key,
+        "attempt": int(attempt),
+        "slots": slots,
+        "current_q_index": int(current_q_index),
+        "question_count": question_count,
+        "started_at": now,
+        "updated_at": now,
+    }
+    drafts.append(created)
+    save_quiz_drafts(drafts)
+    return created
+
+
+def delete_quiz_draft(
+    student_name: str,
+    student_email: str | None,
+    material_id: str,
+    attempt: int | None = None,
+) -> int:
+    drafts = load_quiz_drafts()
+    kept = []
+    removed = 0
+    for draft in drafts:
+        if draft.get("material_id") != material_id:
+            kept.append(draft)
+            continue
+        if attempt is not None and int(draft.get("attempt") or 1) != int(attempt):
+            kept.append(draft)
+            continue
+        if _draft_identity_matches(draft, student_name, student_email):
+            removed += 1
+            continue
+        kept.append(draft)
+    if removed:
+        save_quiz_drafts(kept)
+    return removed
+
+
+def delete_quiz_drafts_for_material(material_id: str) -> int:
+    drafts = load_quiz_drafts()
+    kept = [d for d in drafts if d.get("material_id") != material_id]
+    removed = len(drafts) - len(kept)
+    if removed:
+        save_quiz_drafts(kept)
     return removed
 
 
