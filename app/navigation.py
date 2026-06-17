@@ -101,12 +101,24 @@ def get_student_section() -> str:
 
 
 def set_student_section(section: str) -> None:
-    """Muda a seção do aluno (sidebar + URL) sem depender do widget."""
+    """Muda a seção do aluno (persistência + URL).
+
+    Não altera a key do radio da sidebar aqui: o widget já foi renderizado
+    nesta execução. O alinhamento ocorre no início de render_student_sidebar_nav.
+    """
     if section not in STUDENT_SECTION_KEYS:
         return
     st.session_state[STUDENT_NAV_KEY] = section
-    st.session_state[STUDENT_WIDGET_KEY] = section
     _sync_query_param("s_section", section)
+
+
+def _align_student_nav_widget() -> None:
+    """Sincroniza o radio da sidebar com a seção persistida (antes do widget)."""
+    target = st.session_state.get(STUDENT_NAV_KEY)
+    if not target:
+        return
+    if st.session_state.get(STUDENT_WIDGET_KEY) != target:
+        st.session_state[STUDENT_WIDGET_KEY] = target
 
 
 def render_professor_sidebar_nav():
@@ -151,6 +163,7 @@ def render_student_sidebar_nav():
         section_keys,
         section_keys[0],
     )
+    _align_student_nav_widget()
     _init_nav_widget(STUDENT_WIDGET_KEY, current)
 
     st.sidebar.markdown('<div class="kahoot-sidebar-nav-title">Navegação</div>', unsafe_allow_html=True)
