@@ -386,32 +386,74 @@ def _title_from_upload(
     return f"{base} — {stem}"
 
 
-def _bulk_import_flash(
+def _bulk_import_success_message(
     created: list[str],
-    errors: list[str],
     *,
     singular: str,
     plural: str,
 ) -> str:
-    parts: list[str] = []
+    if len(created) == 1:
+        return f"{singular.capitalize()} criado: {created[0]}."
+    return f"{len(created)} {plural} importados: " + ", ".join(created) + "."
+
+
+def _finish_bulk_import(
+    *,
+    success_key: str,
+    errors_key: str,
+    created: list[str],
+    errors: list[str],
+    singular: str,
+    plural: str,
+    bump_widgets: list[str] | None = None,
+) -> None:
+    """Persiste feedback e recarrega para exibir alertas no topo da página."""
     if created:
-        if len(created) == 1:
-            parts.append(f"{singular.capitalize()} criado: {created[0]}.")
-        else:
-            parts.append(f"{len(created)} {plural} importados: " + ", ".join(created) + ".")
-    if errors:
-        parts.append(
-            f"⚠️ {len(errors)} arquivo(s) não importado(s): " + " | ".join(errors)
+        st.session_state[success_key] = _bulk_import_success_message(
+            created, singular=singular, plural=plural
         )
-    return " ".join(parts)
+    if errors:
+        st.session_state[errors_key] = list(errors)
+    if not created and not errors:
+        return
+    if created and bump_widgets:
+        for widget in bump_widgets:
+            _bump_upload_widget(widget)
+    st.rerun()
+
+
+def _render_bulk_import_feedback(
+    success_msg: str | None,
+    error_msgs: list[str] | None,
+    *,
+    toast_ok: str | None = None,
+) -> None:
+    if success_msg:
+        st.success(success_msg)
+        if toast_ok:
+            st.toast(toast_ok)
+    if error_msgs:
+        st.warning(
+            f"**{len(error_msgs)} arquivo(s) não foram importados.** "
+            "Confira o motivo abaixo e corrija o arquivo."
+        )
+        for err in error_msgs:
+            st.markdown(f"- {err}")
 
 
 def render_exams_tab():
     exam_flash = st.session_state.pop("exam_import_flash", None)
+    exam_errors = st.session_state.pop("exam_import_errors", None)
     release_flash = st.session_state.pop("exam_release_flash", None)
-    if exam_flash:
-        render_import_flash(exam_flash)
-        st.toast("✅ Prova importada com sucesso!")
+    _render_bulk_import_feedback(
+        exam_flash,
+        exam_errors,
+        toast_ok=(
+            "✅ Prova importada com sucesso!"
+            if exam_flash and not exam_errors
+            else ("⚠️ Importação parcial — veja os alertas." if exam_errors else None)
+        ),
+    )
     if release_flash:
         st.success(release_flash)
 
@@ -525,20 +567,16 @@ def render_exams_tab():
                 summary = exam_summary(exam["questions"])
                 created.append(f"**{exam['title']}** ({summary['total']} questões)")
 
-        if created:
-            st.session_state.exam_import_flash = _bulk_import_flash(
-                created,
-                errors,
-                singular="prova",
-                plural="provas",
-            )
-            _bump_upload_widget("exam_pdf")
-            _bump_upload_widget("exam_title")
-            st.rerun()
-        if errors:
-            for err in errors:
-                st.error(err)
-        if not created:
+        _finish_bulk_import(
+            success_key="exam_import_flash",
+            errors_key="exam_import_errors",
+            created=created,
+            errors=errors,
+            singular="prova",
+            plural="provas",
+            bump_widgets=["exam_pdf", "exam_title"] if created else None,
+        )
+        if not created and not errors:
             st.error("Nenhuma prova foi criada. Verifique o formato dos arquivos.")
             st.info(
                 "Para o formato UC2: cada questão precisa de enunciado, 4 alternativas "
@@ -1313,9 +1351,16 @@ def render_professor_panel():
     st.title("👨‍🏫 Painel do Professor")
 
     quiz_flash = st.session_state.pop("quiz_import_flash", None)
-    if quiz_flash:
-        render_import_flash(quiz_flash)
-        st.toast("✅ Quiz importado com sucesso!")
+    quiz_errors = st.session_state.pop("quiz_import_errors", None)
+    _render_bulk_import_feedback(
+        quiz_flash,
+        quiz_errors,
+        toast_ok=(
+            "✅ Quiz importado com sucesso!"
+            if quiz_flash and not quiz_errors
+            else ("⚠️ Importação parcial — veja os alertas." if quiz_errors else None)
+        ),
+    )
 
     current_user = st.session_state.get("current_user") or {}
     show_admin_tab = auth_users.is_system_admin(current_user.get("email")) or bool(
@@ -1390,19 +1435,16 @@ def render_professor_panel():
                             created.append(
                                 f"\"{material['title']}\" ({len(material['questions'])} perguntas)"
                             )
-                    if created:
-                        st.session_state.quiz_import_flash = _bulk_import_flash(
-                            created,
-                            errors,
-                            singular="material",
-                            plural="materiais",
-                        )
-                        _bump_upload_widget("prof_pdf")
-                        st.rerun()
-                    if errors:
-                        for err in errors:
-                            st.error(err)
-                    if not created:
+                    _finish_bulk_import(
+                        success_key="quiz_import_flash",
+                        errors_key="quiz_import_errors",
+                        created=created,
+                        errors=errors,
+                        singular="material",
+                        plural="materiais",
+                        bump_widgets=["prof_pdf"] if created else None,
+                    )
+                    if not created and not errors:
                         st.error("Nenhum material foi criado.")
 
         if not materials:
