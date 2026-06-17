@@ -341,6 +341,25 @@ def _upload_widget_key(widget_base: str) -> str:
     return f"{widget_base}_{st.session_state.get(f'{widget_base}_rev', 0)}"
 
 
+def _uploaded_files_list(uploaded) -> list:
+    if not uploaded:
+        return []
+    if isinstance(uploaded, list):
+        return [f for f in uploaded if f is not None]
+    return [uploaded]
+
+
+def _title_from_upload(filename: str, base_title: str = "") -> str:
+    """Título da prova/material: usa o campo do professor ou o nome do arquivo."""
+    stem = Path(filename).stem.replace("_", " ").strip()
+    base = " ".join((base_title or "").strip().split())
+    if not base:
+        return stem or "Importado"
+    if not stem or stem.lower() == base.lower():
+        return base
+    return f"{base} — {stem}"
+
+
 def render_exams_tab():
     exam_flash = st.session_state.pop("exam_import_flash", None)
     release_flash = st.session_state.pop("exam_release_flash", None)
@@ -374,10 +393,17 @@ def render_exams_tab():
         key=_upload_widget_key("exam_title"),
     )
     uploaded = st.file_uploader(
-        "Arquivo da prova (PDF ou Markdown, com gabarito)",
+        "Arquivo(s) da prova (PDF ou Markdown, com gabarito)",
         type=UPLOAD_FILE_TYPES,
         key=_upload_widget_key("exam_pdf"),
+        accept_multiple_files=True,
     )
+    upload_files = _uploaded_files_list(uploaded)
+    if len(upload_files) > 1:
+        st.caption(
+            f"**{len(upload_files)}** arquivo(s) selecionado(s). "
+            "Cada um vira uma prova (título = campo acima + nome do arquivo, ou só o nome do arquivo)."
+        )
     use_deadline = st.checkbox("Definir prazo de entrega", key="exam_use_deadline")
     deadline_at = None
     dl_date = None
@@ -403,36 +429,51 @@ def render_exams_tab():
             "Após o prazo, o aluno só pode **revisar** a prova."
         )
 
-    if st.button("📄 Importar prova", type="primary") and uploaded and new_title.strip():
-        questions = parse_exam_from_upload(uploaded)
-        if questions:
-            deadline_at = None
-            if use_deadline:
-                deadline_at, dl_err = build_deadline_from_inputs(dl_date, dl_time_text)
-                if dl_err:
-                    st.error(dl_err)
-                    return
-            create_exam(new_title.strip(), questions, deadline_at=deadline_at)
-            summary = exam_summary(questions)
-            composite = summary.get("composite", 0)
-            msg = (
-                f"Prova criada: {summary['total']} questões "
-                f"({summary['choice']} múltipla escolha, {summary['justify']} justificativas)."
+    if st.button("📄 Importar prova(s)", type="primary") and upload_files:
+        deadline_at = None
+        if use_deadline:
+            deadline_at, dl_err = build_deadline_from_inputs(dl_date, dl_time_text)
+            if dl_err:
+                st.error(dl_err)
+                return
+
+        created: list[str] = []
+        errors: list[str] = []
+        for uploaded_file in upload_files:
+            title = _title_from_upload(uploaded_file.name, new_title)
+            questions = parse_exam_from_upload(
+                uploaded_file,
+                show_warnings=len(upload_files) == 1,
             )
-            if composite:
-                msg += f" ({composite} com justificativa para o aluno)"
-            st.session_state.exam_import_flash = msg
+            if not questions:
+                errors.append(f"{uploaded_file.name}: nenhuma questão identificada.")
+                continue
+            create_exam(title, questions, deadline_at=deadline_at)
+            summary = exam_summary(questions)
+            created.append(f"**{title}** ({summary['total']} questões)")
+
+        if created:
+            if len(created) == 1:
+                st.session_state.exam_import_flash = f"Prova criada: {created[0]}."
+            else:
+                st.session_state.exam_import_flash = (
+                    f"{len(created)} provas importadas: " + ", ".join(created) + "."
+                )
             _bump_upload_widget("exam_pdf")
             _bump_upload_widget("exam_title")
             st.rerun()
-        else:
-            st.error("Nenhuma questão identificada. Verifique o formato do arquivo.")
+        if errors:
+            for err in errors:
+                st.error(err)
+        if not created:
+            st.error("Nenhuma prova foi criada. Verifique o formato dos arquivos.")
             st.info(
                 "Para o formato UC2: cada questão precisa de enunciado, 4 alternativas "
                 "(`a)` a `d)`), bloco `Justificativa:` e tabela **GABARITO OFICIAL** no final "
-                "(ex.: `1  B`). Use o botão **Baixar modelo UC2** acima. "
-                "Se o arquivo está correto, reinicie o app (`Ctrl+C` e `python -m streamlit run main.py`)."
+                "(ex.: `1  B`). Use o botão **Baixar modelo UC2** acima."
             )
+    elif st.button("📄 Importar prova(s)", type="primary"):
+        st.warning("Selecione pelo menos um arquivo.")
 
     if not exams:
         st.info("Nenhuma prova cadastrada. Importe um PDF ou Markdown acima.")
@@ -721,51 +762,58 @@ def _render_import_results_section(*, focus: str = "all"):
         caption = (
             "O aluno envia o arquivo **.json** (ou por e-mail com JSON + Markdown). "
             "Importe apenas o **JSON** aqui — o Markdown é só para leitura. "
-            "Os resultados são adicionados ao aluno confirmado, sem duplicar o que já existe."
+            "Você pode enviar **vários arquivos** de uma vez."
         )
         uploader_key = "import_results_file"
         expanded = bool(flash)
 
     with st.expander(title, expanded=expanded):
         st.caption(caption)
-        accept_multiple = focus == "exam"
         up = st.file_uploader(
             "Arquivo(s) de resultados (.json)",
             type=["json"],
             key=uploader_key,
-            accept_multiple_files=accept_multiple,
+            accept_multiple_files=True,
         )
         if not up:
             return
 
-        files = up if accept_multiple else [up]
+        files = _uploaded_files_list(up)
 
-        if accept_multiple and len(files) > 1:
+        if len(files) > 1:
             bulk_replace = st.checkbox(
                 "Substituir envios já existentes (mesmos IDs do arquivo)",
-                key="import_exam_bulk_replace",
+                key="import_results_bulk_replace",
                 help="Use quando os alunos foram removidos mas os envios antigos ainda estão no sistema.",
             )
-            if st.button(
-                "📤 Importar todos os arquivos",
-                type="primary",
-                key="import_exam_bulk_btn",
-            ):
+            bulk_label = (
+                "📤 Importar todos os arquivos (provas)"
+                if focus == "exam"
+                else "📤 Importar todos os arquivos"
+            )
+            if st.button(bulk_label, type="primary", key="import_results_bulk_btn"):
                 payload_files = [(f.name, f.getvalue()) for f in files]
                 stats = import_student_exports_bulk(
                     payload_files,
-                    exams_only=True,
+                    exams_only=(focus == "exam"),
                     replace_existing=bulk_replace,
                 )
                 if stats["files_ok"] == 0:
                     for err in stats["errors"]:
                         st.error(err)
                     return
-                msg = (
-                    f"✅ {stats['files_ok']} arquivo(s) importado(s): "
-                    f"{stats['exam_added']} prova(s) adicionada(s) "
-                    f"({stats['exam_skipped']} já existiam)."
-                )
+                if focus == "exam":
+                    msg = (
+                        f"✅ {stats['files_ok']} arquivo(s) importado(s): "
+                        f"{stats['exam_added']} prova(s) adicionada(s) "
+                        f"({stats['exam_skipped']} já existiam)."
+                    )
+                else:
+                    msg = (
+                        f"✅ {stats['files_ok']} arquivo(s) importado(s): "
+                        f"{stats['quiz_added']} quiz(zes), {stats['exam_added']} prova(s) "
+                        f"({stats['quiz_skipped']} quiz / {stats['exam_skipped']} prova já existiam)."
+                    )
                 if stats["files_failed"]:
                     msg += f" {stats['files_failed']} arquivo(s) com erro."
                 st.session_state[flash_key] = msg
@@ -1215,7 +1263,14 @@ def render_professor_panel():
             "Importar perguntas (PDF, .md ou .markdown)",
             type=UPLOAD_FILE_TYPES,
             key=_upload_widget_key("prof_pdf"),
+            accept_multiple_files=True,
         )
+        material_files = _uploaded_files_list(uploaded)
+        if len(material_files) > 1:
+            st.caption(
+                f"**{len(material_files)}** arquivo(s) selecionado(s). "
+                "Cada um vira um material (título = campo acima + nome do arquivo, ou só o nome do arquivo)."
+            )
 
         col_a, col_b = st.columns(2)
         with col_a:
@@ -1224,18 +1279,38 @@ def render_professor_panel():
                 st.success("Material criado.")
                 st.rerun()
         with col_b:
-            if st.button("📄 Criar a partir do arquivo") and uploaded and new_title.strip():
-                questions = parse_questions_from_upload(uploaded)
-                if questions:
-                    title = new_title.strip()
-                    create_material(title, questions)
-                    st.session_state.quiz_import_flash = (
-                        f"Quiz \"{title}\" criado com {len(questions)} perguntas."
+            if st.button("📄 Criar a partir do(s) arquivo(s)") and material_files:
+                created = []
+                errors = []
+                for mat_file in material_files:
+                    title = _title_from_upload(mat_file.name, new_title)
+                    questions = parse_questions_from_upload(
+                        mat_file,
+                        show_warnings=len(material_files) == 1,
                     )
+                    if questions:
+                        create_material(title, questions)
+                        created.append(f"\"{title}\" ({len(questions)} perguntas)")
+                    else:
+                        errors.append(f"{mat_file.name}: não foi possível extrair perguntas.")
+                if created:
+                    if len(created) == 1:
+                        st.session_state.quiz_import_flash = (
+                            f"Quiz {created[0]} criado."
+                        )
+                    else:
+                        st.session_state.quiz_import_flash = (
+                            f"{len(created)} materiais criados: " + ", ".join(created) + "."
+                        )
                     _bump_upload_widget("prof_pdf")
                     st.rerun()
-                else:
-                    st.error("Não foi possível extrair perguntas do arquivo.")
+                if errors:
+                    for err in errors:
+                        st.error(err)
+                if not created:
+                    st.error("Nenhum material foi criado.")
+            elif st.button("📄 Criar a partir do(s) arquivo(s)"):
+                st.warning("Selecione pelo menos um arquivo.")
 
         if not materials:
             st.info("Nenhum material cadastrado. Crie um material acima.")
