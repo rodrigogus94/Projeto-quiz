@@ -60,6 +60,19 @@ from app.exam_drafts import (
     exam_attempt_number,
     load_exam_draft_for_attempt,
 )
+from app.quiz_drafts import (
+    autosave_quiz_draft,
+    clear_quiz_draft_for_attempt,
+    count_answered_quiz_slots,
+    ensure_quiz_slots,
+    load_quiz_draft_for_attempt,
+    normalize_quiz_slots,
+    pending_quiz_indices,
+    quiz_attempt_number,
+    quiz_radio_key,
+    slots_to_student_answers,
+    start_quiz_from_draft_or_fresh,
+)
 from app.components import (
     inject_student_area_css,
     render_classification_badge,
