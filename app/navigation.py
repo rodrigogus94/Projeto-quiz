@@ -9,7 +9,13 @@ STUDENT_NAV_KEY = "student_nav_section"
 PROFESSOR_WIDGET_KEY = "professor_nav_widget"
 STUDENT_WIDGET_KEY = "student_nav_widget"
 
-STUDENT_SECTION_KEYS = ("quiz", "exam")
+STUDENT_SECTION_KEYS = ("home", "quiz", "exam")
+
+_STUDENT_SECTION_LABELS = {
+    "home": "🏠 Início",
+    "quiz": "🎮 Quiz",
+    "exam": "📝 Provas",
+}
 
 
 def _professor_nav_sections(show_admin_tab: bool) -> list[tuple[str, str]]:
@@ -91,7 +97,16 @@ def get_professor_section() -> str:
 
 
 def get_student_section() -> str:
-    return st.session_state.get(STUDENT_NAV_KEY, "quiz")
+    return st.session_state.get(STUDENT_NAV_KEY, "home")
+
+
+def set_student_section(section: str) -> None:
+    """Muda a seção do aluno (sidebar + URL) sem depender do widget."""
+    if section not in STUDENT_SECTION_KEYS:
+        return
+    st.session_state[STUDENT_NAV_KEY] = section
+    st.session_state[STUDENT_WIDGET_KEY] = section
+    _sync_query_param("s_section", section)
 
 
 def render_professor_sidebar_nav():
@@ -142,7 +157,7 @@ def render_student_sidebar_nav():
     choice = st.sidebar.radio(
         "Seção do aluno",
         options=section_keys,
-        format_func=lambda key: "🎮 Quiz" if key == "quiz" else "📝 Provas",
+        format_func=lambda key: _STUDENT_SECTION_LABELS[key],
         key=STUDENT_WIDGET_KEY,
         on_change=_on_student_nav_change,
         label_visibility="collapsed",

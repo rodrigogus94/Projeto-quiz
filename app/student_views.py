@@ -48,7 +48,7 @@ from app.result_transfer import (
 )
 
 from app.auth_ui import render_student_register_form
-from app.navigation import get_student_section
+from app.navigation import get_student_section, set_student_section
 from app.charts import plot_student_result
 from app.components import (
     inject_student_area_css,
@@ -70,6 +70,7 @@ from app.session import (
     load_student_material,
     on_quiz_material_changed,
     quiz_attempt_permission,
+    quiz_attempts_for,
     reset_quiz,
     sync_playable_exam,
     sync_playable_material,
@@ -412,15 +413,230 @@ def _render_my_exam_history(student_name: str = "", student_email: str | None = 
         st.caption("Todas as provas enviadas já foram devolvidas — veja acima em **Provas devolvidas**.")
 
 
+def _pending_activities_for_student(
+    student_name: str,
+    student_email: str | None,
+) -> tuple[list[dict], list[dict]]:
+    """Quizzes e provas que o aluno ainda pode fazer, com flag is_new."""
+    quizzes: list[dict] = []
+    for material in get_playable_active_materials():
+        can_play, _, _ = quiz_attempt_permission(
+            student_name, material["id"], student_email
+        )
+        if not can_play:
+            continue
+        attempts = quiz_attempts_for(student_name, material["id"], student_email)
+        quizzes.append(
+            {
+                "id": material["id"],
+                "title": material["title"],
+                "questions": len(material.get("questions") or []),
+                "is_new": not attempts,
+            }
+        )
+
+    exams: list[dict] = []
+    for exam in filter_exams_for_student(
+        get_playable_active_exams(), student_name, student_email
+    ):
+        attempts = exam_submissions_for_student(
+            student_name, exam["id"], student_email
+        )
+        exams.append(
+            {
+                "id": exam["id"],
+                "title": exam["title"],
+                "questions": len(exam.get("questions") or []),
+                "deadline": exam_deadline_label(exam),
+                "is_new": not attempts,
+                "is_recovery": bool(attempts),
+            }
+        )
+    return quizzes, exams
+
+
+def _go_to_student_quiz(material_id: str) -> None:
+    st.session_state.selected_material_id = material_id
+    load_student_material(material_id)
+    set_student_section("quiz")
+
+
+def _go_to_student_exam(exam_id: str) -> None:
+    st.session_state.selected_exam_id = exam_id
+    set_student_section("exam")
+
+
+def render_student_home_tab():
+    registered = approved_students()
+    if not registered:
+        _render_registration_gate()
+        return
+
+    user = st.session_state.get("current_user") or {}
+    names = sorted(s["name"] for s in registered)
+
+    col_cfg, col_main = st.columns([1, 2], gap="large")
+    with col_cfg:
+        with st.container(border=True):
+            st.markdown('<div class="kahoot-config-title">Seu perfil</div>', unsafe_allow_html=True)
+            student_name = _render_student_identity(names, "home_student_name")
+            st.divider()
+            if st.button("🎮 Ir para quizzes", use_container_width=True):
+                set_student_section("quiz")
+                st.rerun()
+            if st.button("📝 Ir para provas", use_container_width=True):
+                set_student_section("exam")
+                st.rerun()
+
+    with col_main:
+        display_name = bound_student_name() or (user.get("name") or "")
+        if display_name:
+            hero_msg = (
+                f"Olá, **{display_name}**! Veja abaixo quizzes e provas novos "
+                "ou pendentes para você."
+            )
+        else:
+            hero_msg = (
+                "Veja quizzes e provas novos ou pendentes. "
+                "Selecione seu nome à esquerda para personalizar a lista."
+            )
+        render_student_hero("🏠 Painel inicial", hero_msg)
+
+        if not student_name:
+            st.info("Selecione seu nome à esquerda para ver as atividades disponíveis.")
+            return
+
+        pending_quizzes, pending_exams = _pending_activities_for_student(
+            student_name, user.get("email")
+        )
+        new_quizzes = [q for q in pending_quizzes if q["is_new"]]
+        new_exams = [e for e in pending_exams if e["is_new"]]
+        returned_count = _render_returned_exams(student_name, user.get("email"))
+
+        m1, m2, m3, m4 = st.columns(4)
+        with m1:
+            st.metric("Quizzes pendentes", len(pending_quizzes))
+        with m2:
+            st.metric("Provas pendentes", len(pending_exams))
+        with m3:
+            st.metric("Novos para você", len(new_quizzes) + len(new_exams))
+        with m4:
+            st.metric("Provas devolvidas", returned_count)
+
+        if new_quizzes or new_exams:
+            st.markdown("#### 🆕 Novidades")
+            st.caption("Atividades que você ainda não começou.")
+            for quiz in new_quizzes:
+                col_info, col_btn = st.columns([5, 1], vertical_alignment="center")
+                with col_info:
+                    render_history_item(
+                        title=quiz["title"],
+                        meta=f"🎮 Quiz · {quiz['questions']} perguntas",
+                        badge_text="Novo",
+                        badge_tone="good",
+                    )
+                with col_btn:
+                    if st.button(
+                        "Abrir",
+                        key=f"home_new_quiz_{quiz['id']}",
+                        use_container_width=True,
+                    ):
+                        _go_to_student_quiz(quiz["id"])
+                        st.rerun()
+            for exam in new_exams:
+                col_info, col_btn = st.columns([5, 1], vertical_alignment="center")
+                with col_info:
+                    meta = f"📝 Prova · {exam['questions']} questões"
+                    if exam.get("deadline"):
+                        meta += f" · {exam['deadline']}"
+                    render_history_item(
+                        title=exam["title"],
+                        meta=meta,
+                        badge_text="Nova",
+                        badge_tone="good",
+                    )
+                with col_btn:
+                    if st.button(
+                        "Abrir",
+                        key=f"home_new_exam_{exam['id']}",
+                        use_container_width=True,
+                    ):
+                        _go_to_student_exam(exam["id"])
+                        st.rerun()
+
+        recovery_exams = [e for e in pending_exams if e["is_recovery"]]
+        retry_quizzes = [q for q in pending_quizzes if not q["is_new"]]
+
+        if retry_quizzes or recovery_exams:
+            st.markdown("#### ⏳ Continuar ou recuperar")
+            for quiz in retry_quizzes:
+                col_info, col_btn = st.columns([5, 1], vertical_alignment="center")
+                with col_info:
+                    render_history_item(
+                        title=quiz["title"],
+                        meta=f"🎮 Quiz · {quiz['questions']} perguntas",
+                        badge_text="2ª chance",
+                        badge_tone="mid",
+                    )
+                with col_btn:
+                    if st.button(
+                        "Abrir",
+                        key=f"home_retry_quiz_{quiz['id']}",
+                        use_container_width=True,
+                    ):
+                        _go_to_student_quiz(quiz["id"])
+                        st.rerun()
+            for exam in recovery_exams:
+                col_info, col_btn = st.columns([5, 1], vertical_alignment="center")
+                with col_info:
+                    meta = f"📝 Recuperação · {exam['questions']} questões"
+                    if exam.get("deadline"):
+                        meta += f" · {exam['deadline']}"
+                    render_history_item(
+                        title=exam["title"],
+                        meta=meta,
+                        badge_text="Recuperação",
+                        badge_tone="mid",
+                    )
+                with col_btn:
+                    if st.button(
+                        "Abrir",
+                        key=f"home_recovery_exam_{exam['id']}",
+                        use_container_width=True,
+                    ):
+                        _go_to_student_exam(exam["id"])
+                        st.rerun()
+
+        if not pending_quizzes and not pending_exams and not returned_count:
+            render_empty_state(
+                icon="✨",
+                title="Tudo em dia!",
+                message="Não há quizzes nem provas pendentes no momento.",
+                hint="Quando o professor publicar algo novo, aparecerá aqui.",
+            )
+        elif not pending_quizzes and not pending_exams:
+            st.success(
+                "Você não tem quizzes nem provas pendentes. "
+                "Confira suas provas devolvidas acima."
+            )
+
+
 def render_student_panel():
     inject_student_area_css()
     section = get_student_section()
-    section_label = "Quiz" if section == "quiz" else "Provas"
+    section_labels = {
+        "home": "Início",
+        "quiz": "Quiz",
+        "exam": "Provas",
+    }
+    section_label = section_labels.get(section, "Início")
 
     st.title("👨‍🎓 Área do Aluno")
     st.caption(f"**{section_label}** · use a navegação na barra lateral para trocar de seção.")
 
-    if section == "quiz":
+    if section == "home":
+        render_student_home_tab()
+    elif section == "quiz":
         render_student_quiz_tab()
     else:
         render_student_exam_tab()
