@@ -1303,7 +1303,7 @@ def _render_quiz_results():
         c1, c2 = st.columns(2)
         with c1:
             if st.button("📝 Sim, refazer o quiz", type="primary", use_container_width=True):
-                reset_quiz()
+                reset_quiz(question_count=len(st.session_state.questions))
                 st.rerun()
         with c2:
             if st.button("🏠 Não, manter meu resultado", type="secondary", use_container_width=True):
