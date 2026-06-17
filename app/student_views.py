@@ -137,43 +137,43 @@ def _quiz_go_to_question(index: int, slots: list) -> None:
     st.session_state.answer_feedback = _quiz_feedback_for_index(index, slots)
 
 
-def _render_quiz_navigation_panel(q_index: int, total_q: int, slots: list) -> None:
+def _render_quiz_inline_progress(q_index: int, total_q: int, slots: list) -> None:
+    """Barra compacta de progresso — sem painel lateral."""
     answered_count = count_answered_quiz_slots(slots)
     pending = pending_quiz_indices(slots)
 
-    with st.container(border=True):
-        st.markdown('<div class="kahoot-config-title">Progresso</div>', unsafe_allow_html=True)
-        st.caption(f"💾 Salvamento automático · **{answered_count}/{total_q}** respondidas")
+    st.caption(
+        f"💾 **{answered_count}/{total_q}** respondidas · "
+        "use **Voltar** / **Avançar** ou clique no número da questão"
+    )
 
-        st.markdown("**Mapa do quiz**")
-        map_cols = st.columns(min(total_q, 5))
-        for i in range(total_q):
+    per_row = 10
+    for row_start in range(0, total_q, per_row):
+        row_end = min(row_start + per_row, total_q)
+        cols = st.columns(row_end - row_start)
+        for col, i in zip(cols, range(row_start, row_end)):
             slot = slots[i]
             if slot and slot.get("answered"):
                 label = f"✅ {i + 1}"
             elif i == q_index:
-                label = f"📍 {i + 1}"
+                label = f"▶ {i + 1}"
             else:
-                label = f"○ {i + 1}"
-            with map_cols[i % len(map_cols)]:
-                if st.button(label, key=f"quiz_map_{i}", use_container_width=True):
+                label = str(i + 1)
+            with col:
+                if st.button(
+                    label,
+                    key=f"quiz_map_{i}",
+                    use_container_width=True,
+                    type="primary" if i == q_index else "secondary",
+                ):
                     _quiz_go_to_question(i, slots)
                     st.rerun()
 
-        if pending:
-            st.warning(
-                f"**Faltam {len(pending)} pergunta(s):** "
-                + ", ".join(str(i + 1) for i in pending)
-            )
-            for i in pending:
-                if st.button(
-                    f"Ir para questão {i + 1}",
-                    key=f"quiz_pending_{i}",
-                    use_container_width=True,
-                ):
-                    _quiz_go_to_question(i, slots)
-                    st.session_state.answer_feedback = None
-                    st.rerun()
+    if pending:
+        st.warning(
+            "**Faltam responder:** "
+            + ", ".join(f"questão {i + 1}" for i in pending)
+        )
 
 
 def _quiz_feedback_for_index(index: int, slots: list) -> dict | None:
@@ -1172,127 +1172,122 @@ def _render_quiz_flow():
         return
 
     q_data = st.session_state.questions[q_index]
-    col_main, col_nav = st.columns([2, 1], gap="large")
 
-    with col_nav:
-        _render_quiz_navigation_panel(q_index, total_q, slots)
+    render_flow_header(
+        label="Quiz em andamento",
+        current=q_index + 1,
+        total=total_q,
+        student_name=st.session_state.current_student_name,
+    )
+    _render_quiz_inline_progress(q_index, total_q, slots)
 
-    with col_main:
-        render_flow_header(
-            label="Quiz em andamento",
-            current=q_index + 1,
-            total=total_q,
-            student_name=st.session_state.current_student_name,
+    feedback = st.session_state.answer_feedback
+    if feedback is None:
+        feedback = _quiz_feedback_for_index(q_index, slots)
+        if feedback is not None:
+            st.session_state.answer_feedback = feedback
+
+    with st.container(border=True):
+        st.markdown(
+            f'<div class="kahoot-question-card"><h4>{q_data["question"]}</h4></div>',
+            unsafe_allow_html=True,
         )
-        st.caption("Use **Voltar** e **Avançar** ao lado do botão de confirmar. O progresso é salvo automaticamente.")
-
-        feedback = st.session_state.answer_feedback
-        if feedback is None:
-            feedback = _quiz_feedback_for_index(q_index, slots)
-            if feedback is not None:
-                st.session_state.answer_feedback = feedback
-
-        with st.container(border=True):
-            st.markdown(
-                f'<div class="kahoot-question-card"><h4>{q_data["question"]}</h4></div>',
-                unsafe_allow_html=True,
-            )
-            if feedback is not None:
-                if feedback["is_correct"]:
-                    st.success("✅ Resposta correta!")
-                else:
-                    st.error(
-                        f"❌ Resposta incorreta. A alternativa correta era **{feedback['correct']}**."
-                    )
-                action_back, action_mid, action_fwd = st.columns([1, 2, 1])
-                with action_back:
-                    if st.button(
-                        "⬅️ Voltar",
-                        disabled=q_index <= 0,
-                        use_container_width=True,
-                        key=f"quiz_fb_back_{q_index}",
-                    ):
-                        _quiz_go_to_question(q_index - 1, slots)
-                        st.rerun()
-                with action_mid:
-                    if st.button("✏️ Alterar resposta", key=f"quiz_change_{q_index}", use_container_width=True):
-                        slots[q_index] = None
-                        st.session_state.quiz_answer_slots = slots
-                        st.session_state.answer_feedback = None
-                        if quiz_radio_key(q_index) in st.session_state:
-                            del st.session_state[quiz_radio_key(q_index)]
-                        st.rerun()
-                with action_fwd:
-                    if q_index + 1 < total_q:
-                        if st.button(
-                            "➡️ Avançar",
-                            disabled=q_index >= total_q - 1,
-                            use_container_width=True,
-                            key=f"quiz_fb_fwd_{q_index}",
-                            type="primary",
-                        ):
-                            _quiz_go_to_question(q_index + 1, slots)
-                            st.rerun()
-                    else:
-                        pending = pending_quiz_indices(slots)
-                        if pending:
-                            st.warning(
-                                "Ainda faltam perguntas. Use o painel ao lado para ir às pendentes."
-                            )
-                        elif st.button(
-                            "🏁 Ver resultado",
-                            key="finish_quiz",
-                            type="primary",
-                            use_container_width=True,
-                        ):
-                            if _finish_quiz_from_slots():
-                                st.rerun()
+        if feedback is not None:
+            if feedback["is_correct"]:
+                st.success("✅ Resposta correta!")
             else:
-                option_map = {chr(65 + i): opt for i, opt in enumerate(q_data["options"])}
-                selected_letter = st.radio(
-                    "Escolha uma alternativa:",
-                    options=list(option_map.keys()),
-                    format_func=lambda x: f"{x}: {option_map[x]}",
-                    key=quiz_radio_key(q_index),
+                st.error(
+                    f"❌ Resposta incorreta. A alternativa correta era **{feedback['correct']}**."
                 )
-                nav_back, nav_confirm, nav_fwd = st.columns([1, 2, 1])
-                with nav_back:
-                    if st.button(
-                        "⬅️ Voltar",
-                        disabled=q_index <= 0,
-                        use_container_width=True,
-                        key=f"quiz_back_{q_index}",
-                    ):
-                        _quiz_go_to_question(q_index - 1, slots)
-                        st.rerun()
-                with nav_confirm:
-                    if st.button(
-                        "✅ Confirmar resposta",
-                        key="submit_answer",
-                        type="primary",
-                        use_container_width=True,
-                    ):
-                        is_correct = selected_letter == q_data["correct"]
-                        slots[q_index] = {
-                            "letter": selected_letter,
-                            "answered": True,
-                            "is_correct": is_correct,
-                        }
-                        st.session_state.quiz_answer_slots = slots
-                        st.session_state.answer_feedback = {
-                            "is_correct": is_correct,
-                            "correct": q_data["correct"],
-                        }
-                        st.rerun()
-                with nav_fwd:
+            action_back, action_mid, action_fwd = st.columns([1, 2, 1])
+            with action_back:
+                if st.button(
+                    "⬅️ Voltar",
+                    disabled=q_index <= 0,
+                    use_container_width=True,
+                    key=f"quiz_fb_back_{q_index}",
+                ):
+                    _quiz_go_to_question(q_index - 1, slots)
+                    st.rerun()
+            with action_mid:
+                if st.button("✏️ Alterar resposta", key=f"quiz_change_{q_index}", use_container_width=True):
+                    slots[q_index] = None
+                    st.session_state.quiz_answer_slots = slots
+                    st.session_state.answer_feedback = None
+                    if quiz_radio_key(q_index) in st.session_state:
+                        del st.session_state[quiz_radio_key(q_index)]
+                    st.rerun()
+            with action_fwd:
+                if q_index + 1 < total_q:
                     if st.button(
                         "➡️ Avançar",
                         disabled=q_index >= total_q - 1,
                         use_container_width=True,
-                        key=f"quiz_fwd_{q_index}",
+                        key=f"quiz_fb_fwd_{q_index}",
+                        type="primary",
                     ):
                         _quiz_go_to_question(q_index + 1, slots)
                         st.rerun()
+                else:
+                    pending = pending_quiz_indices(slots)
+                    if pending:
+                        st.warning(
+                            "Ainda faltam perguntas. Confira os números acima ou use **Voltar**/**Avançar**."
+                        )
+                    elif st.button(
+                        "🏁 Ver resultado",
+                        key="finish_quiz",
+                        type="primary",
+                        use_container_width=True,
+                    ):
+                        if _finish_quiz_from_slots():
+                            st.rerun()
+        else:
+            option_map = {chr(65 + i): opt for i, opt in enumerate(q_data["options"])}
+            selected_letter = st.radio(
+                "Escolha uma alternativa:",
+                options=list(option_map.keys()),
+                format_func=lambda x: f"{x}: {option_map[x]}",
+                key=quiz_radio_key(q_index),
+            )
+            nav_back, nav_confirm, nav_fwd = st.columns([1, 2, 1])
+            with nav_back:
+                if st.button(
+                    "⬅️ Voltar",
+                    disabled=q_index <= 0,
+                    use_container_width=True,
+                    key=f"quiz_back_{q_index}",
+                ):
+                    _quiz_go_to_question(q_index - 1, slots)
+                    st.rerun()
+            with nav_confirm:
+                if st.button(
+                    "✅ Confirmar resposta",
+                    key="submit_answer",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    is_correct = selected_letter == q_data["correct"]
+                    slots[q_index] = {
+                        "letter": selected_letter,
+                        "answered": True,
+                        "is_correct": is_correct,
+                    }
+                    st.session_state.quiz_answer_slots = slots
+                    st.session_state.answer_feedback = {
+                        "is_correct": is_correct,
+                        "correct": q_data["correct"],
+                    }
+                    st.rerun()
+            with nav_fwd:
+                if st.button(
+                    "➡️ Avançar",
+                    disabled=q_index >= total_q - 1,
+                    use_container_width=True,
+                    key=f"quiz_fwd_{q_index}",
+                ):
+                    _quiz_go_to_question(q_index + 1, slots)
+                    st.rerun()
 
     autosave_quiz_draft(
         material_id=st.session_state.current_material_id,
