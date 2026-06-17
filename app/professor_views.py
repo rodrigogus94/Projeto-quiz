@@ -429,7 +429,11 @@ def render_exams_tab():
             "Após o prazo, o aluno só pode **revisar** a prova."
         )
 
-    if st.button("📄 Importar prova(s)", type="primary") and upload_files:
+    if st.button("📄 Importar prova(s)", type="primary", key="import_exams_btn"):
+        if not upload_files:
+            st.warning("Selecione pelo menos um arquivo.")
+            return
+
         deadline_at = None
         if use_deadline:
             deadline_at, dl_err = build_deadline_from_inputs(dl_date, dl_time_text)
@@ -472,8 +476,6 @@ def render_exams_tab():
                 "(`a)` a `d)`), bloco `Justificativa:` e tabela **GABARITO OFICIAL** no final "
                 "(ex.: `1  B`). Use o botão **Baixar modelo UC2** acima."
             )
-    elif st.button("📄 Importar prova(s)", type="primary"):
-        st.warning("Selecione pelo menos um arquivo.")
 
     if not exams:
         st.info("Nenhuma prova cadastrada. Importe um PDF ou Markdown acima.")
@@ -1279,38 +1281,46 @@ def render_professor_panel():
                 st.success("Material criado.")
                 st.rerun()
         with col_b:
-            if st.button("📄 Criar a partir do(s) arquivo(s)") and material_files:
-                created = []
-                errors = []
-                for mat_file in material_files:
-                    title = _title_from_upload(mat_file.name, new_title)
-                    questions = parse_questions_from_upload(
-                        mat_file,
-                        show_warnings=len(material_files) == 1,
-                    )
-                    if questions:
-                        create_material(title, questions)
-                        created.append(f"\"{title}\" ({len(questions)} perguntas)")
-                    else:
-                        errors.append(f"{mat_file.name}: não foi possível extrair perguntas.")
-                if created:
-                    if len(created) == 1:
-                        st.session_state.quiz_import_flash = (
-                            f"Quiz {created[0]} criado."
+            if st.button(
+                "📄 Criar a partir do(s) arquivo(s)",
+                key="import_materials_btn",
+            ):
+                if not material_files:
+                    st.warning("Selecione pelo menos um arquivo.")
+                else:
+                    created = []
+                    errors = []
+                    for mat_file in material_files:
+                        title = _title_from_upload(mat_file.name, new_title)
+                        questions = parse_questions_from_upload(
+                            mat_file,
+                            show_warnings=len(material_files) == 1,
                         )
-                    else:
-                        st.session_state.quiz_import_flash = (
-                            f"{len(created)} materiais criados: " + ", ".join(created) + "."
-                        )
-                    _bump_upload_widget("prof_pdf")
-                    st.rerun()
-                if errors:
-                    for err in errors:
-                        st.error(err)
-                if not created:
-                    st.error("Nenhum material foi criado.")
-            elif st.button("📄 Criar a partir do(s) arquivo(s)"):
-                st.warning("Selecione pelo menos um arquivo.")
+                        if questions:
+                            create_material(title, questions)
+                            created.append(f"\"{title}\" ({len(questions)} perguntas)")
+                        else:
+                            errors.append(
+                                f"{mat_file.name}: não foi possível extrair perguntas."
+                            )
+                    if created:
+                        if len(created) == 1:
+                            st.session_state.quiz_import_flash = (
+                                f"Quiz {created[0]} criado."
+                            )
+                        else:
+                            st.session_state.quiz_import_flash = (
+                                f"{len(created)} materiais criados: "
+                                + ", ".join(created)
+                                + "."
+                            )
+                        _bump_upload_widget("prof_pdf")
+                        st.rerun()
+                    if errors:
+                        for err in errors:
+                            st.error(err)
+                    if not created:
+                        st.error("Nenhum material foi criado.")
 
         if not materials:
             st.info("Nenhum material cadastrado. Crie um material acima.")
