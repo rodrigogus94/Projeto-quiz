@@ -50,6 +50,16 @@ from app.result_transfer import (
 from app.auth_ui import render_student_register_form
 from app.navigation import get_student_section, set_student_section
 from app.charts import plot_student_result
+from app.exam_drafts import (
+    apply_exam_draft_to_session,
+    autosave_exam_draft,
+    build_answers_input_from_session,
+    clear_exam_draft_for_attempt,
+    collect_exam_answers_from_session,
+    count_answered_questions,
+    exam_attempt_number,
+    load_exam_draft_for_attempt,
+)
 from app.components import (
     inject_student_area_css,
     render_classification_badge,
@@ -125,6 +135,7 @@ def _clear_exam_session():
     st.session_state.exam_mode = "select"
     st.session_state.current_exam_id = None
     st.session_state.exam_submission_result = None
+    st.session_state.pop("exam_draft_notice", None)
 
 
 def _render_results_download(widget_key: str):
@@ -899,13 +910,53 @@ def render_student_exam_tab():
                             "se tem direito à recuperação."
                         )
                 if existing and can_recover:
-                    btn_label = "🔄 Fazer recuperação"
+                    attempt_no = exam_attempt_number(
+                        student_name, picked_id, user.get("email")
+                    )
+                    saved_draft = load_exam_draft_for_attempt(
+                        student_name=student_name,
+                        student_email=user.get("email"),
+                        exam_id=picked_id,
+                        attempt=attempt_no,
+                    )
+                    if saved_draft:
+                        answered = count_answered_questions(
+                            saved_draft.get("answers") or {},
+                            len(exam.get("questions") or []),
+                        )
+                        btn_label = "▶️ Continuar recuperação"
+                        st.success(
+                            f"💾 Rascunho da recuperação — **{answered}** questão(ões) salva(s). "
+                            f"Última atualização: {_format_when(saved_draft.get('updated_at'))} (UTC)."
+                        )
+                    else:
+                        btn_label = "🔄 Fazer recuperação"
                 elif existing:
                     btn_label = "👁️ Ver prova enviada"
                 elif past:
                     btn_label = "👁️ Revisar prova (somente leitura)"
                 else:
-                    btn_label = "📋 Responder prova"
+                    attempt_no = exam_attempt_number(
+                        student_name, picked_id, user.get("email")
+                    )
+                    saved_draft = load_exam_draft_for_attempt(
+                        student_name=student_name,
+                        student_email=user.get("email"),
+                        exam_id=picked_id,
+                        attempt=attempt_no,
+                    )
+                    if saved_draft:
+                        answered = count_answered_questions(
+                            saved_draft.get("answers") or {},
+                            len(exam.get("questions") or []),
+                        )
+                        btn_label = "▶️ Continuar prova"
+                        st.success(
+                            f"💾 Rascunho encontrado — **{answered}** questão(ões) salva(s). "
+                            f"Última atualização: {_format_when(saved_draft.get('updated_at'))} (UTC)."
+                        )
+                    else:
+                        btn_label = "📋 Responder prova"
 
                 if can_recover and recover_msg:
                     st.info(recover_msg)
@@ -1193,16 +1244,14 @@ def _render_exam_flow():
         st.rerun()
 
     user = st.session_state.get("current_user") or {}
-    prior = student_submission_for_exam(
-        st.session_state.current_student_name,
-        exam["id"],
-        user.get("email"),
-    )
+    student_name = st.session_state.current_student_name
+    student_email = user.get("email")
+    prior = student_submission_for_exam(student_name, exam["id"], student_email)
     if prior:
         can_recover, _, _ = exam_attempt_permission(
-            st.session_state.current_student_name,
+            student_name,
             exam["id"],
-            user.get("email"),
+            student_email,
             exam,
         )
         if not can_recover:
@@ -1210,15 +1259,36 @@ def _render_exam_flow():
             st.session_state.exam_mode = "review"
             st.rerun()
 
-    total_q = len(exam["questions"])
+    questions = exam["questions"]
+    attempt_no = exam_attempt_number(student_name, exam["id"], student_email)
+    saved_draft = load_exam_draft_for_attempt(
+        student_name=student_name,
+        student_email=student_email,
+        exam_id=exam["id"],
+        attempt=attempt_no,
+    )
+    restored = apply_exam_draft_to_session(saved_draft, questions)
+    if restored and not st.session_state.get("exam_draft_notice"):
+        st.session_state.exam_draft_notice = True
+        st.success(
+            f"💾 Rascunho recuperado — **{restored}** resposta(s) restaurada(s). "
+            "Continue de onde parou."
+        )
+
+    total_q = len(questions)
     render_flow_header(
         label=exam["title"],
         current=total_q,
         total=total_q,
-        student_name=st.session_state.current_student_name,
+        student_name=student_name,
     )
-    questions = exam["questions"]
     needs_justify_exam = exam_requires_justify(questions)
+    answers_snapshot = collect_exam_answers_from_session(questions)
+    answered_count = count_answered_questions(answers_snapshot, total_q)
+    st.caption(
+        f"💾 Salvamento automático ativo — **{answered_count}/{total_q}** questões com resposta. "
+        "Se a internet cair, reabra a prova e clique em **Continuar prova**."
+    )
     if needs_justify_exam:
         st.caption(
             "Marque a alternativa e **justifique** cada resposta. A nota principal vem da "
@@ -1227,100 +1297,139 @@ def _render_exam_flow():
     else:
         st.caption("Responda todas as questões e envie ao final. O gabarito não é exibido.")
 
-    with st.form("exam_submit_form"):
-        answers_input = []
-        for i, q in enumerate(questions):
-            q_view = question_for_student(q)
-            show_justify = (
-                q_view["type"] == "choice_with_justify"
-                or (needs_justify_exam and q_view["type"] == "choice")
+    for i, q in enumerate(questions):
+        q_view = question_for_student(q)
+        show_justify = (
+            q_view["type"] == "choice_with_justify"
+            or (needs_justify_exam and q_view["type"] == "choice")
+        )
+        if show_justify or q_view["type"] == "choice_with_justify":
+            tipo = "Múltipla escolha + justificativa"
+        elif q_view["type"] == "choice":
+            tipo = "Múltipla escolha"
+        else:
+            tipo = "Justificativa"
+        with st.container(border=True):
+            st.markdown(
+                f'<div class="kahoot-exam-q"><strong>Questão {i + 1}</strong> · {tipo}</div>',
+                unsafe_allow_html=True,
             )
-            if show_justify or q_view["type"] == "choice_with_justify":
-                tipo = "Múltipla escolha + justificativa"
-            elif q_view["type"] == "choice":
-                tipo = "Múltipla escolha"
+            st.write(q_view["question"])
+            if q_view["type"] in ("choice", "choice_with_justify"):
+                opts = {letter: q_view["options"][j] for j, letter in enumerate("ABCD")}
+                st.radio(
+                    "Alternativa",
+                    options=list(opts.keys()),
+                    format_func=lambda x: f"{x}) {opts[x]}",
+                    key=f"exam_q_{i}_mc",
+                    label_visibility="visible",
+                )
+                if show_justify:
+                    st.text_area(
+                        "Justifique sua resposta",
+                        key=f"exam_q_{i}_justify",
+                        height=100,
+                        placeholder="Explique o conceito por trás da alternativa escolhida…",
+                    )
             else:
-                tipo = "Justificativa"
-            with st.container(border=True):
-                st.markdown(
-                    f'<div class="kahoot-exam-q"><strong>Questão {i + 1}</strong> · {tipo}</div>',
-                    unsafe_allow_html=True,
+                st.text_area(
+                    "Sua resposta (justifique)",
+                    key=f"exam_q_{i}",
+                    height=120,
+                    placeholder="Escreva sua justificativa aqui…",
                 )
-                st.write(q_view["question"])
-                if q_view["type"] in ("choice", "choice_with_justify"):
-                    opts = {letter: q_view["options"][j] for j, letter in enumerate("ABCD")}
-                    picked = st.radio(
-                        "Alternativa",
-                        options=list(opts.keys()),
-                        format_func=lambda x: f"{x}) {opts[x]}",
-                        key=f"exam_q_{i}_mc",
-                        label_visibility="visible",
-                    )
-                    if show_justify:
-                        justify = st.text_area(
-                            "Justifique sua resposta",
-                            key=f"exam_q_{i}_justify",
-                            height=100,
-                            placeholder="Explique o conceito por trás da alternativa escolhida…",
-                        )
-                        answers_input.append(("choice_with_justify", picked, justify))
-                    else:
-                        answers_input.append(("choice", picked))
-                else:
-                    text = st.text_area(
-                        "Sua resposta (justifique)",
-                        key=f"exam_q_{i}",
-                        height=120,
-                        placeholder="Escreva sua justificativa aqui…",
-                    )
-                    answers_input.append(("justify", text))
 
-        if st.form_submit_button("📤 Enviar prova", type="primary", use_container_width=True):
-            graded = []
-            for item, q_full in zip(answers_input, questions):
-                kind = item[0]
-                if kind == "choice":
-                    graded.append(grade_choice_answer(item[1], q_full["correct"]))
-                elif kind == "choice_with_justify":
-                    graded.append(
-                        grade_choice_with_justify(
-                            item[1],
-                            q_full["correct"],
-                            item[2],
-                            q_full.get("answer_key", ""),
-                        )
-                    )
-                else:
-                    graded.append(
-                        grade_justify_answer(item[1], q_full.get("answer_key", ""))
-                    )
+    autosave_exam_draft(
+        exam=exam,
+        student_name=student_name,
+        student_email=student_email,
+    )
 
-            summary = summarize_answers(graded)
-            user = st.session_state.get("current_user") or {}
-            prior_count = len(
-                exam_submissions_for_student(
-                    st.session_state.current_student_name,
-                    exam["id"],
-                    user.get("email"),
-                )
+    save_col, submit_col = st.columns(2)
+    with save_col:
+        if st.button("💾 Salvar progresso agora", use_container_width=True):
+            draft = autosave_exam_draft(
+                exam=exam,
+                student_name=student_name,
+                student_email=student_email,
             )
-            submission = {
-                "id": str(uuid.uuid4()),
-                "exam_id": exam["id"],
-                "student_name": st.session_state.current_student_name,
-                "student_email": (user.get("email") or "").strip().lower() or None,
-                "answers": graded,
-                "summary": summary,
-                "submitted_at": datetime.now(timezone.utc).isoformat(),
-                "correction_released": False,
-                "attempt": prior_count + 1,
-                "is_recovery": prior_count >= 1,
-            }
-            add_exam_submission(submission)
-            st.session_state.exam_submission_result = submission
-            st.session_state.current_exam_id = exam["id"]
-            st.session_state.exam_mode = "done"
-            st.rerun()
+            if draft:
+                saved = count_answered_questions(draft.get("answers") or {}, total_q)
+                st.toast(f"Progresso salvo ({saved}/{total_q} questões).")
+            else:
+                st.toast("Nenhuma resposta para salvar ainda.")
+    with submit_col:
+        submit_clicked = st.button(
+            "📤 Enviar prova",
+            type="primary",
+            use_container_width=True,
+        )
+
+    if submit_clicked:
+        answers_input = build_answers_input_from_session(questions)
+        missing = []
+        for idx, item in enumerate(answers_input):
+            kind = item[0]
+            if kind == "choice" and not item[1]:
+                missing.append(idx + 1)
+            elif kind == "choice_with_justify" and (not item[1] or not (item[2] or "").strip()):
+                missing.append(idx + 1)
+            elif kind == "justify" and not (item[1] or "").strip():
+                missing.append(idx + 1)
+        if missing:
+            st.warning(
+                "Responda todas as questões antes de enviar. "
+                f"Pendentes: {', '.join(str(n) for n in missing)}."
+            )
+            return
+
+        graded = []
+        for item, q_full in zip(answers_input, questions):
+            kind = item[0]
+            if kind == "choice":
+                graded.append(grade_choice_answer(item[1], q_full["correct"]))
+            elif kind == "choice_with_justify":
+                graded.append(
+                    grade_choice_with_justify(
+                        item[1],
+                        q_full["correct"],
+                        item[2],
+                        q_full.get("answer_key", ""),
+                    )
+                )
+            else:
+                graded.append(
+                    grade_justify_answer(item[1], q_full.get("answer_key", ""))
+                )
+
+        summary = summarize_answers(graded)
+        prior_count = len(
+            exam_submissions_for_student(student_name, exam["id"], student_email)
+        )
+        submission = {
+            "id": str(uuid.uuid4()),
+            "exam_id": exam["id"],
+            "student_name": student_name,
+            "student_email": (student_email or "").strip().lower() or None,
+            "answers": graded,
+            "summary": summary,
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+            "correction_released": False,
+            "attempt": prior_count + 1,
+            "is_recovery": prior_count >= 1,
+        }
+        add_exam_submission(submission)
+        clear_exam_draft_for_attempt(
+            student_name=student_name,
+            student_email=student_email,
+            exam_id=exam["id"],
+            attempt=attempt_no,
+        )
+        st.session_state.exam_submission_result = submission
+        st.session_state.current_exam_id = exam["id"]
+        st.session_state.exam_mode = "done"
+        st.session_state.pop("exam_draft_notice", None)
+        st.rerun()
 
 def _reload_exam_submission(result: dict | None) -> dict | None:
     """Atualiza envio da sessão com dados persistidos (ex.: correção liberada)."""

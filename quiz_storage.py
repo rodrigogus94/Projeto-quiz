@@ -17,6 +17,7 @@ LEADERBOARD_PATH = DATA_DIR / "leaderboard.json"
 STUDENTS_PATH = DATA_DIR / "students.json"
 EXAMS_PATH = DATA_DIR / "exams.json"
 EXAM_SUBMISSIONS_PATH = DATA_DIR / "exam_submissions.json"
+EXAM_DRAFTS_PATH = DATA_DIR / "exam_drafts.json"
 
 DEFAULT_USERNAME = "professor"
 DEFAULT_PASSWORD = "professor123"
@@ -326,6 +327,17 @@ def rename_student_records(
     if stats["exam_updated"]:
         save_exam_submissions(subs)
 
+    drafts = load_exam_drafts()
+    draft_changed = False
+    for draft in drafts:
+        if _matches(draft.get("student_name"), draft.get("student_email")):
+            draft["student_name"] = new_name
+            if email_key:
+                draft["student_email"] = email_key
+            draft_changed = True
+    if draft_changed:
+        save_exam_drafts(drafts)
+
     students = load_students()
     roster_changed = False
     for student in students:
@@ -433,7 +445,19 @@ def purge_student_results(student_name: str, student_email: str | None = None) -
     if exam_removed:
         save_exam_submissions(kept_subs)
 
-    return {"quiz_removed": quiz_removed, "exam_removed": exam_removed}
+    drafts = load_exam_drafts()
+    kept_drafts = [
+        d for d in drafts if not _is_target(d.get("student_name"), d.get("student_email"))
+    ]
+    draft_removed = len(drafts) - len(kept_drafts)
+    if draft_removed:
+        save_exam_drafts(kept_drafts)
+
+    return {
+        "quiz_removed": quiz_removed,
+        "exam_removed": exam_removed,
+        "draft_removed": draft_removed,
+    }
 
 
 def delete_student(student_id: str) -> None:
@@ -837,6 +861,7 @@ def delete_exam(exam_id: str) -> None:
         s for s in load_exam_submissions() if s.get("exam_id") != exam_id
     ]
     save_exam_submissions(submissions)
+    delete_exam_drafts_for_exam(exam_id)
 
 
 def load_exam_submissions() -> list:
@@ -943,6 +968,125 @@ def add_exam_submission(submission: dict) -> None:
     submissions = load_exam_submissions()
     submissions.append(submission)
     save_exam_submissions(submissions)
+
+
+def load_exam_drafts() -> list:
+    _ensure_data_dir()
+    data = _load_json(EXAM_DRAFTS_PATH, [])
+    return data if isinstance(data, list) else []
+
+
+def save_exam_drafts(drafts: list) -> None:
+    _save_json(EXAM_DRAFTS_PATH, drafts)
+
+
+def _draft_identity_matches(
+    draft: dict,
+    student_name: str,
+    student_email: str | None,
+) -> bool:
+    name_key = _normalize_name(student_name)
+    email_key = (student_email or "").strip().lower()
+    draft_email = (draft.get("student_email") or "").strip().lower()
+    if email_key and draft_email == email_key:
+        return True
+    return bool(name_key) and _normalize_name(draft.get("student_name", "")) == name_key
+
+
+def find_exam_draft(
+    student_name: str,
+    student_email: str | None,
+    exam_id: str,
+    attempt: int,
+) -> dict | None:
+    for draft in load_exam_drafts():
+        if draft.get("exam_id") != exam_id:
+            continue
+        if int(draft.get("attempt") or 1) != int(attempt):
+            continue
+        if _draft_identity_matches(draft, student_name, student_email):
+            return draft
+    return None
+
+
+def upsert_exam_draft(
+    *,
+    student_name: str,
+    student_email: str | None,
+    exam_id: str,
+    attempt: int,
+    answers: dict,
+    question_count: int,
+) -> dict:
+    """Grava ou atualiza rascunho da prova (respostas parciais)."""
+    now = datetime.now(timezone.utc).isoformat()
+    email_key = (student_email or "").strip().lower() or None
+    drafts = load_exam_drafts()
+    existing = None
+    for draft in drafts:
+        if (
+            draft.get("exam_id") == exam_id
+            and int(draft.get("attempt") or 1) == int(attempt)
+            and _draft_identity_matches(draft, student_name, student_email)
+        ):
+            existing = draft
+            break
+
+    if existing:
+        existing["answers"] = answers
+        existing["question_count"] = question_count
+        existing["updated_at"] = now
+        save_exam_drafts(drafts)
+        return existing
+
+    created = {
+        "id": str(uuid.uuid4()),
+        "exam_id": exam_id,
+        "student_name": student_name.strip(),
+        "student_email": email_key,
+        "attempt": int(attempt),
+        "answers": answers,
+        "question_count": question_count,
+        "started_at": now,
+        "updated_at": now,
+    }
+    drafts.append(created)
+    save_exam_drafts(drafts)
+    return created
+
+
+def delete_exam_draft(
+    student_name: str,
+    student_email: str | None,
+    exam_id: str,
+    attempt: int | None = None,
+) -> int:
+    drafts = load_exam_drafts()
+    kept = []
+    removed = 0
+    for draft in drafts:
+        if draft.get("exam_id") != exam_id:
+            kept.append(draft)
+            continue
+        if attempt is not None and int(draft.get("attempt") or 1) != int(attempt):
+            kept.append(draft)
+            continue
+        if _draft_identity_matches(draft, student_name, student_email):
+            removed += 1
+            continue
+        kept.append(draft)
+    if removed:
+        save_exam_drafts(kept)
+    return removed
+
+
+def delete_exam_drafts_for_exam(exam_id: str) -> int:
+    drafts = load_exam_drafts()
+    kept = [d for d in drafts if d.get("exam_id") != exam_id]
+    removed = len(drafts) - len(kept)
+    if removed:
+        save_exam_drafts(kept)
+    return removed
 
 
 def update_exam_submission(

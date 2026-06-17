@@ -12,6 +12,7 @@ from auth_users import USERS_PATH, load_users, save_users
 from quiz_storage import (
     CONFIG_PATH,
     DATA_DIR,
+    EXAM_DRAFTS_PATH,
     EXAM_SUBMISSIONS_PATH,
     EXAMS_PATH,
     LEADERBOARD_PATH,
@@ -53,6 +54,7 @@ _BACKUP_PATHS: dict[str, Path] = {
     "students": STUDENTS_PATH,
     "exams": EXAMS_PATH,
     "exam_submissions": EXAM_SUBMISSIONS_PATH,
+    "exam_drafts": EXAM_DRAFTS_PATH,
     "users": USERS_PATH,
 }
 
