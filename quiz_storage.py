@@ -160,7 +160,6 @@ def create_materials_bulk(entries: list[tuple[str, list]]) -> list[dict]:
         return []
 
     store = load_materials_store()
-    had_materials = bool(store.get("materials"))
     created: list[dict] = []
     now = datetime.now(timezone.utc).isoformat()
 
@@ -174,8 +173,11 @@ def create_materials_bulk(entries: list[tuple[str, list]]) -> list[dict]:
         store["materials"].append(material)
         created.append(material)
 
-    if created and not had_materials:
-        store.setdefault("active_material_ids", []).append(created[0]["id"])
+    if created:
+        active_ids = store.setdefault("active_material_ids", [])
+        for material in created:
+            if material["id"] not in active_ids:
+                active_ids.append(material["id"])
 
     save_materials_store(store)
     return created
@@ -824,7 +826,6 @@ def create_exams_bulk(
         return []
 
     store = load_exams_store()
-    had_exams = bool(store.get("exams"))
     created: list[dict] = []
     now = datetime.now(timezone.utc).isoformat()
 
@@ -839,8 +840,11 @@ def create_exams_bulk(
         store["exams"].append(exam)
         created.append(exam)
 
-    if created and not had_exams:
-        store.setdefault("active_exam_ids", []).append(created[0]["id"])
+    if created:
+        active_ids = store.setdefault("active_exam_ids", [])
+        for exam in created:
+            if exam["id"] not in active_ids:
+                active_ids.append(exam["id"])
 
     save_exams_store(store)
     return created

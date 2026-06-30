@@ -391,10 +391,15 @@ def _bulk_import_success_message(
     *,
     singular: str,
     plural: str,
+    active_hint: bool = False,
 ) -> str:
     if len(created) == 1:
-        return f"{singular.capitalize()} criado: {created[0]}."
-    return f"{len(created)} {plural} importados: " + ", ".join(created) + "."
+        msg = f"{singular.capitalize()} criado: {created[0]}."
+    else:
+        msg = f"{len(created)} {plural} importados: " + ", ".join(created) + "."
+    if active_hint:
+        msg += " Já está(ão) **ativo(s)** para os alunos."
+    return msg
 
 
 def _finish_bulk_import(
@@ -406,11 +411,12 @@ def _finish_bulk_import(
     singular: str,
     plural: str,
     bump_widgets: list[str] | None = None,
+    active_hint: bool = False,
 ) -> None:
     """Persiste feedback e recarrega para exibir alertas no topo da página."""
     if created:
         st.session_state[success_key] = _bulk_import_success_message(
-            created, singular=singular, plural=plural
+            created, singular=singular, plural=plural, active_hint=active_hint
         )
     if errors:
         st.session_state[errors_key] = list(errors)
@@ -471,9 +477,6 @@ def render_exams_tab():
             mime="text/markdown",
             help="Preencha no Word ou editor de texto, exporte para PDF e importe acima.",
         )
-
-    exams = list_exams()
-    active_ids = set(get_active_exam_ids())
 
     new_title = st.text_input(
         "Título da prova",
@@ -575,6 +578,7 @@ def render_exams_tab():
             singular="prova",
             plural="provas",
             bump_widgets=["exam_pdf", "exam_title"] if created else None,
+            active_hint=bool(created),
         )
         if not created and not errors:
             st.error("Nenhuma prova foi criada. Verifique o formato dos arquivos.")
@@ -583,6 +587,9 @@ def render_exams_tab():
                 "(`a)` a `d)`), bloco `Justificativa:` e tabela **GABARITO OFICIAL** no final "
                 "(ex.: `1  B`). Use o botão **Baixar modelo UC2** acima."
             )
+
+    exams = list_exams()
+    active_ids = set(get_active_exam_ids())
 
     if not exams:
         st.info("Nenhuma prova cadastrada. Importe um PDF ou Markdown acima.")
